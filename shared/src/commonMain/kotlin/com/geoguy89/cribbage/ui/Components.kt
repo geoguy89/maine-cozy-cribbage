@@ -112,6 +112,7 @@ fun Carved(text: String, size: TextUnit, modifier: Modifier = Modifier, wood: Wo
             textAlign = align, shadow = Shadow(wood.highlight().copy(alpha = 0.8f), Offset(0f, 2f), 1f),
         ),
         maxLines = maxLines, overflow = TextOverflow.Ellipsis,
+        autoSize = if (maxLines == 1) androidx.compose.foundation.text.TextAutoSize.StepBased(minFontSize = 8.sp, maxFontSize = size, stepSize = 0.5.sp) else null,
     )
 }
 
@@ -188,9 +189,8 @@ fun WoodButton(
         contentAlignment = Alignment.Center,
     ) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.Center) {
-            // Long labels shrink rather than get cut off.
-            val fit = if (text.length > 13) size * (13f / text.length).coerceAtLeast(0.7f) else size
-            Carved(text.uppercase(), fit, wood = if (enabled) wood else Wood.DRIFTWOOD, font = LocalUi.current.fonts.label)
+            // Labels shrink to fit the button rather than get cut off.
+            Carved(text.uppercase(), size, Modifier.weight(1f, fill = false), wood = if (enabled) wood else Wood.DRIFTWOOD, font = LocalUi.current.fonts.label)
             if (icon != null) { Spacer(Modifier.width(8.dp)); icon() }
         }
     }

@@ -166,8 +166,8 @@ private fun ScoreBar(model: AppModel, table: Table, display: List<Int>, onMenu: 
         WoodButton("☰", onMenu, size = 16.sp, modifier = Modifier.width(48.dp))
         Plaque("${model.board.name}, ME  ⤢", Modifier.weight(1f), size = 13.sp)
         Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(3.dp)) {
-            Plaque("${table.names[table.me].take(10)}: ${display[table.me]}", size = 13.sp, pegColor = colors[table.me])
-            Plaque("${table.names[table.opponent].take(10)}: ${display[table.opponent]}", size = 13.sp, pegColor = colors[table.opponent])
+            Plaque("${table.names[table.me].take(18)}: ${display[table.me]}", size = 13.sp, pegColor = colors[table.me])
+            Plaque("${table.names[table.opponent].take(18)}: ${display[table.opponent]}", size = 13.sp, pegColor = colors[table.opponent])
         }
     }
 }
@@ -418,8 +418,8 @@ private fun ActionRow(model: AppModel, table: Table, hint: List<Card>, onSheet: 
     val sel = table.selected.toList()
     val (label, enabled, action) = when {
         s.over -> Triple("Game over", false) {}
-        table.blocked -> Triple("Read the note", false) {}
-        !table.myTurn -> Triple(if (table.busy) "Sending..." else "${table.names[table.opponent].take(12)}'s turn", false) {}
+        table.blocked -> Triple("Continue above", false) {}
+        !table.myTurn -> Triple(if (table.busy) "Sending..." else "${table.names[table.opponent]}'s turn", false) {}
         s.phase == Phase.DISCARD -> if (sel.size == 2) Triple("Throw to crib", true) { table.discard(sel) } else Triple(if (sel.isEmpty()) "Pick 2 cards" else "Pick 1 more", false) {}
         else -> sel.firstOrNull()?.let { c -> Triple("Play ${c.short}", c.value + s.count <= 31) { table.play(c) } } ?: Triple("Pick a card", false) {}
     }

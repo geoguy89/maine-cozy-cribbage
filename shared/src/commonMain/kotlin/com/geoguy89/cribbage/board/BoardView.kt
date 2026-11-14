@@ -29,6 +29,8 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.rememberTextMeasurer
+import androidx.compose.ui.text.drawText
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.unit.IntSize
 import com.geoguy89.cribbage.gfx.Carving.peg
 import com.geoguy89.cribbage.gfx.Sil
@@ -74,6 +76,8 @@ fun BoardView(
     ambient: Boolean = true,
     animatePegs: Boolean = true,
     onPegLanded: () -> Unit = {},
+    /** Flags with each player's score beside their front peg. */
+    showScores: Boolean = true,
 ) {
     BoxWithConstraints(modifier.aspectRatio(design.aspect)) {
         val density = LocalDensity.current
@@ -131,9 +135,31 @@ fun BoardView(
             withTransform({ scale(k, k, Offset.Zero) }) {
                 if (ambient) for ((i, w) in waters.withIndex()) wildlife(w, time, i)
                 val r = design.trackSpec.holeR * 1.6f
-                for (p in 0..1) for (j in 0..1) {
-                    val pos = geometry.position(p, pegPos[p][j].value)
-                    peg(pos, r, pegs.colors[p], lift[p][j].value)
+                for (p in 0..1) {
+                    val front = if (pegPos[p][0].value >= pegPos[p][1].value) 0 else 1
+                    // The back peg (the previous score) is smaller and faded, so the front one clearly leads.
+                    val back = 1 - front
+                    peg(geometry.position(p, pegPos[p][back].value), r * 0.8f, pegs.colors[p].copy(alpha = 0.6f), lift[p][back].value)
+                    peg(geometry.position(p, pegPos[p][front].value), r, pegs.colors[p], lift[p][front].value)
+                }
+                if (showScores) for (p in 0..1) {
+                    // A small flag in the player's colour beside the front peg, with the score on it.
+                    val score = scores.getOrElse(p) { 0 }.coerceIn(0, 121)
+                    val fv = maxOf(pegPos[p][0].value, pegPos[p][1].value)
+                    val at = geometry.position(p, fv)
+                    val i = fv.toInt().coerceIn(1, 120)
+                    val side = if (p == 0) 1f else -1f
+                    val out = geometry.normal[i] * (design.trackSpec.laneGap * 1.15f * side)
+                    val c = at + out
+                    val label = measurer.measure(score.toString(), androidx.compose.ui.text.TextStyle(color = Color.White, fontSize = (2.3f * k / (this.density * this.fontScale)).sp, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold, fontFamily = fonts.label))
+                    val w = label.size.width / k + 1.6f
+                    val h = label.size.height / k + 0.2f
+                    drawRoundRect(Color.Black.copy(alpha = 0.35f), c - Offset(w / 2 - 0.25f, h / 2 - 0.35f), androidx.compose.ui.geometry.Size(w, h), androidx.compose.ui.geometry.CornerRadius(h / 2))
+                    drawRoundRect(pegs.colors[p], c - Offset(w / 2, h / 2), androidx.compose.ui.geometry.Size(w, h), androidx.compose.ui.geometry.CornerRadius(h / 2))
+                    drawRoundRect(Color.White.copy(alpha = 0.8f), c - Offset(w / 2, h / 2), androidx.compose.ui.geometry.Size(w, h), androidx.compose.ui.geometry.CornerRadius(h / 2), style = Stroke(0.25f))
+                    withTransform({ scale(1f / k, 1f / k, Offset.Zero) }) {
+                        drawText(label, topLeft = Offset(c.x * k - label.size.width / 2f, c.y * k - label.size.height / 2f))
+                    }
                 }
             }
         }
