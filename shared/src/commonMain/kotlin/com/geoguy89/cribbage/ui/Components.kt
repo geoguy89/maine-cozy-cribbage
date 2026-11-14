@@ -27,6 +27,8 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
@@ -102,17 +104,21 @@ fun Txt(
     )
 }
 
-/** Carved lettering: the burnt colour with a sliver of light underneath, like the board text. */
+/**
+ * Carved lettering: the burnt colour with a sliver of light underneath, like the board text. One-line text shrinks
+ * until it fits the space it's given, so labels are never cut off.
+ */
 @Composable
 fun Carved(text: String, size: TextUnit, modifier: Modifier = Modifier, wood: Wood = LocalUi.current.wood, align: TextAlign = TextAlign.Center, maxLines: Int = 1, font: FontFamily? = null) {
+    var fit by remember(text, size) { mutableStateOf(size.value) }
     BasicText(
         text, modifier,
         style = TextStyle(
-            color = wood.burn(), fontSize = size, fontFamily = font ?: LocalUi.current.fonts.title, fontWeight = FontWeight.Bold,
+            color = wood.burn(), fontSize = fit.sp, fontFamily = font ?: LocalUi.current.fonts.title, fontWeight = FontWeight.Bold,
             textAlign = align, shadow = Shadow(wood.highlight().copy(alpha = 0.8f), Offset(0f, 2f), 1f),
         ),
-        maxLines = maxLines, overflow = TextOverflow.Ellipsis,
-        autoSize = if (maxLines == 1) androidx.compose.foundation.text.TextAutoSize.StepBased(minFontSize = 8.sp, maxFontSize = size, stepSize = 0.5.sp) else null,
+        maxLines = maxLines, softWrap = maxLines > 1, overflow = TextOverflow.Clip,
+        onTextLayout = { r -> if (maxLines == 1 && r.didOverflowWidth && fit > 8f) fit *= 0.92f },
     )
 }
 
@@ -198,7 +204,7 @@ fun WoodButton(
 
 /** A pinned scrap of parchment, the tutorial helper's note paper. */
 @Composable
-fun Parchment(modifier: Modifier = Modifier, pins: Boolean = true, content: @Composable ColumnScope.() -> Unit) {
+fun Parchment(modifier: Modifier = Modifier, pins: Boolean = true, tight: Boolean = false, content: @Composable ColumnScope.() -> Unit) {
     val ui = LocalUi.current
     Column(
         modifier.drawBehind {
@@ -221,7 +227,7 @@ fun Parchment(modifier: Modifier = Modifier, pins: Boolean = true, content: @Com
                 drawCircle(Color.Black.copy(alpha = 0.3f), 6.dp.toPx(), c + Offset(2f, 3f))
                 drawCircle(Brush.radialGradient(listOf(Color(0xFFE9D6A8), Color(0xFF8C6A3A)), c - Offset(2f, 2f), 8.dp.toPx()), 5.5.dp.toPx(), c)
             }
-        }.padding(horizontal = 18.dp, vertical = 14.dp),
+        }.padding(horizontal = 18.dp, vertical = if (tight) 8.dp else 14.dp),
         content = content,
     )
 }

@@ -218,13 +218,16 @@ private fun ColumnScope.PlayColumn(model: AppModel, table: Table, compact: Boole
     val coachOn = help != com.geoguy89.cribbage.data.Help.OFF && !table.online
     val tip = remember(s.seq, s.hand, s.phase, s.hands[table.me].size, coachOn) { if (coachOn) Coach.tip(s, table.me) else null }
     val note = table.notes.firstOrNull()
+    if (note == null && (help != com.geoguy89.cribbage.data.Help.OFF || table.online)) {
+        GuideBar(table, help, compact, Modifier.padding(bottom = 4.dp))
+    }
     if (showOpponent) OpponentRow(table)
-    if (showTable) PlayArea(model, table, Modifier.fillMaxWidth().weight(1f).heightIn(min = 118.dp)) else Spacer(Modifier.weight(1f))
+    if (showTable) PlayArea(model, table, Modifier.fillMaxWidth().weight(1f).heightIn(min = 100.dp)) else Spacer(Modifier.weight(1f))
     if (note != null) {
         TutorCard(note, table.notes.size - 1, compact) { table.dismissNote(); model.sound(Sfx.CLICK, 0.5f) }
     } else if (tip != null) {
         var why by remember { mutableStateOf(false) }
-        Parchment(Modifier.fillMaxWidth().padding(vertical = 4.dp), pins = !compact) {
+        Parchment(Modifier.fillMaxWidth().padding(vertical = 4.dp), pins = !compact, tight = compact) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Hand("tutorial helper", Modifier.weight(1f), size = 15.sp, weight = FontWeight.Bold, color = Color(0xFF6B3A1E))
                 if (tip.why.isNotEmpty()) Box(Modifier.clickable { why = !why }.padding(horizontal = 8.dp, vertical = 2.dp)) {
@@ -310,15 +313,18 @@ private fun PlayArea(model: AppModel, table: Table, modifier: Modifier) {
 private fun CountBadge(count: Int, modifier: Modifier) {
     val ui = LocalUi.current
     val scale by animateFloatAsState(if (count == 15 || count == 31) 1.25f else 1f, spring(Spring.DampingRatioMediumBouncy))
-    Box(modifier.size(58.dp).graphicsLayer { scaleX = scale; scaleY = scale }.drawBehind {
-        drawCircle(Color.Black.copy(alpha = 0.35f), size.minDimension / 2, center + Offset(2f, 3f))
-        drawCircle(Brush.radialGradient(listOf(ui.wood.light, ui.wood.base, ui.wood.dark)), size.minDimension / 2)
-        drawCircle(ui.wood.dark, size.minDimension / 2, style = androidx.compose.ui.graphics.drawscope.Stroke(2f))
-    }, contentAlignment = Alignment.Center) {
-        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            Txt("COUNT", size = 9.sp, color = ui.ink.copy(alpha = 0.7f))
-            Carved("$count", 22.sp)
+    Column(modifier, horizontalAlignment = Alignment.CenterHorizontally) {
+        Box(Modifier.size(58.dp).graphicsLayer { scaleX = scale; scaleY = scale }.drawBehind {
+            drawCircle(Color.Black.copy(alpha = 0.35f), size.minDimension / 2, center + Offset(2f, 3f))
+            drawCircle(Brush.radialGradient(listOf(ui.wood.light, ui.wood.base, ui.wood.dark)), size.minDimension / 2)
+            drawCircle(ui.wood.dark, size.minDimension / 2, style = androidx.compose.ui.graphics.drawscope.Stroke(2f))
+        }, contentAlignment = Alignment.Center) {
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Txt("COUNT", size = 9.sp, color = ui.ink.copy(alpha = 0.7f))
+                Carved("$count", 22.sp)
+            }
         }
+        Txt(if (count == 31) "31!" else if (count == 15) "15!" else "${31 - count} to go", size = 11.sp, color = ui.onTable, shadow = true, weight = FontWeight.Medium)
     }
 }
 
@@ -369,7 +375,7 @@ private fun HandRow(model: AppModel, table: Table, modifier: Modifier) {
     val s = table.state
     val hand = if (table.pendingShow != null) emptyList() else s.hands[table.me]
     val ui = LocalUi.current
-    BoxWithConstraints(modifier.height(140.dp), contentAlignment = Alignment.BottomCenter) {
+    BoxWithConstraints(modifier.height(134.dp), contentAlignment = Alignment.BottomCenter) {
         val handW = maxWidth
         val cardH = minOf(maxHeight * 0.86f, 136.dp, handW * 0.3f)
         val cardW = cardH * CARD_ASPECT
@@ -400,7 +406,13 @@ private fun HandRow(model: AppModel, table: Table, modifier: Modifier) {
                             else { table.toggle(card); model.haptic(Haptic.TICK); model.sound(Sfx.CLICK, 0.4f) }
                         },
                 ) {
-                    CardFace(card, Modifier.height(cardH), dim = s.phase == Phase.PEG && table.myTurn && !playable, glow = if (sel) ui.accent else null)
+                    val pts = if (s.phase == Phase.PEG && table.myTurn && playable && model.settings.help != com.geoguy89.cribbage.data.Help.OFF) pegPoints(s, card) else 0
+                    CardFace(card, Modifier.height(cardH), dim = s.phase == Phase.PEG && table.myTurn && !playable,
+                        glow = if (sel) ui.accent else if (pts > 0) Color(0xFFE5B93C) else null)
+                    if (pts > 0) Box(Modifier.align(Alignment.TopCenter).padding(top = 3.dp).drawBehind {
+                        drawRoundRect(Color(0xFFE5B93C), cornerRadius = CornerRadius(10.dp.toPx()))
+                        drawRoundRect(Color(0xFF3A2414), cornerRadius = CornerRadius(10.dp.toPx()), style = androidx.compose.ui.graphics.drawscope.Stroke(1.5.dp.toPx()))
+                    }.padding(horizontal = 8.dp, vertical = 1.dp)) { Txt("+$pts", size = 15.sp, color = Color(0xFF3A2414), weight = FontWeight.Bold) }
                     if (model.settings.help != com.geoguy89.cribbage.data.Help.OFF && !table.online) Box(Modifier.align(Alignment.BottomCenter).padding(bottom = 6.dp).drawBehind {
                         drawRoundRect(Color(0xFF3B2414).copy(alpha = 0.85f), cornerRadius = CornerRadius(8.dp.toPx()))
                     }.padding(horizontal = 7.dp, vertical = 1.dp)) { Txt("${card.value}", size = 12.sp, color = Color.White, weight = FontWeight.Bold) }
@@ -421,7 +433,10 @@ private fun ActionRow(model: AppModel, table: Table, hint: List<Card>, onSheet: 
         table.blocked -> Triple("Continue above", false) {}
         !table.myTurn -> Triple(if (table.busy) "Sending..." else "${table.names[table.opponent]}'s turn", false) {}
         s.phase == Phase.DISCARD -> if (sel.size == 2) Triple("Throw to crib", true) { table.discard(sel) } else Triple(if (sel.isEmpty()) "Pick 2 cards" else "Pick 1 more", false) {}
-        else -> sel.firstOrNull()?.let { c -> Triple("Play ${c.short}", c.value + s.count <= 31) { table.play(c) } } ?: Triple("Pick a card", false) {}
+        else -> sel.firstOrNull()?.let { c ->
+            val pts = if (model.settings.help != com.geoguy89.cribbage.data.Help.OFF) pegPoints(s, c) else 0
+            Triple("Play ${c.short}" + (if (pts > 0) " · +$pts" else ""), c.value + s.count <= 31) { table.play(c) }
+        } ?: Triple("Pick a card to play", false) {}
     }
     Row(Modifier.fillMaxWidth().padding(top = 6.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         WoodButton(label, { action(); model.haptic(Haptic.CONFIRM) }, Modifier.weight(1.6f), primary = enabled, enabled = enabled, size = 16.sp)
@@ -430,7 +445,7 @@ private fun ActionRow(model: AppModel, table: Table, hint: List<Card>, onSheet: 
             if (table.myTurn && cards.isNotEmpty()) table.selected = cards.toSet()
             model.sound(Sfx.CHIME, 0.4f)
         }, Modifier.weight(1f), enabled = table.myTurn, size = 15.sp, icon = { Lantern() })
-        WoodButton("Rules", { onSheet(Sheet.RULES) }, Modifier.weight(1f), size = 15.sp)
+        WoodButton("Scoring", { onSheet(Sheet.RULES) }, Modifier.weight(1f), size = 15.sp)
     }
 }
 
@@ -589,7 +604,11 @@ private fun LogSheet(table: Table, onClose: () -> Unit) {
 
 @Composable
 fun RulesSheet(onClose: () -> Unit) {
-    Sheet("How to play cribbage", onClose) { RulesText() }
+    var tab by remember { mutableStateOf(0) }
+    Sheet("Scoring & rules", onClose) {
+        Chips(listOf("Scoring cheat sheet", "Full rules"), tab) { tab = it }
+        if (tab == 0) ScoringGuide() else RulesText()
+    }
 }
 
 @Composable

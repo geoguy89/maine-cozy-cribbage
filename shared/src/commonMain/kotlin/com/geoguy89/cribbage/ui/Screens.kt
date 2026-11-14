@@ -92,6 +92,27 @@ fun TitleScreen(model: AppModel) {
             Spacer(Modifier.height(18.dp))
             menu()
         }
+        if (!model.settings.welcomed && !choosing) Scrim {
+            Parchment(Modifier.padding(20.dp).widthIn(max = 420.dp)) {
+                Hand("Welcome to the table!", size = 24.sp, weight = FontWeight.Bold)
+                Hand("Never played cribbage? No problem. How would you like to start?", size = 16.sp)
+                Spacer(Modifier.height(10.dp))
+                WoodButton("Teach me the basics", {
+                    model.updateSettings { it.copy(welcomed = true, help = com.geoguy89.cribbage.data.Help.TUTOR) }
+                    model.go(Screen.LESSONS)
+                }, Modifier.fillMaxWidth(), primary = true)
+                Hand("Short hands-on lessons: counting, pairs, runs and pegging.", Modifier.padding(start = 6.dp, bottom = 8.dp, top = 2.dp), size = 14.sp)
+                WoodButton("Play a guided game", {
+                    model.updateSettings { it.copy(welcomed = true, help = com.geoguy89.cribbage.data.Help.TUTOR) }
+                    model.newSoloGame(Difficulty.EASY)
+                }, Modifier.fillMaxWidth())
+                Hand("A friendly opponent, and the tutor explains every step and waits for you.", Modifier.padding(start = 6.dp, bottom = 8.dp, top = 2.dp), size = 14.sp)
+                WoodButton("I know cribbage", {
+                    model.updateSettings { it.copy(welcomed = true, help = com.geoguy89.cribbage.data.Help.TIPS) }
+                }, Modifier.fillMaxWidth())
+                Hand("Just tips when you want them. You can change this any time in Settings.", Modifier.padding(start = 6.dp, top = 2.dp), size = 14.sp)
+            }
+        }
         if (choosing) Scrim({ choosing = false }) {
             Parchment(Modifier.padding(20.dp).widthIn(max = 420.dp)) {
                 Hand("Who's across the table?", size = 22.sp, weight = FontWeight.Bold)
@@ -293,5 +314,5 @@ private fun StatLine(label: String, value: String) {
 
 @Composable
 fun RulesScreen(model: AppModel) {
-    Page("How to Play", model::back) { RulesText() }
+    Page("How to Play", model::back) { ScoringGuide(); RulesText() }
 }

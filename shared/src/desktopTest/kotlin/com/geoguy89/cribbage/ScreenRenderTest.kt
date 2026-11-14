@@ -36,7 +36,7 @@ import kotlin.test.assertEquals
 class ScreenRenderTest {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
 
-    private fun model(settings: Settings = Settings(playerName = "Travis", nameChosen = true), date: LocalDate = LocalDate(2026, 7, 14)): AppModel {
+    private fun model(settings: Settings = Settings(playerName = "Travis", nameChosen = true, welcomed = true), date: LocalDate = LocalDate(2026, 7, 14)): AppModel {
         val store = Store(MemoryKeyValueStore())
         store.saveSettings(settings)
         return AppModel(store, SilentAudio, NoHttp, NoPlatform, scope, today = { date })
@@ -75,7 +75,7 @@ class ScreenRenderTest {
     @Test
     fun titleScreens() {
         render("title_phone", 412, 900, model())
-        render("title_unfolded", 840, 700, model(Settings(playerName = "Travis", nameChosen = true, theme = BaseTheme.FLANNEL_CABIN, board = "moosehead"), LocalDate(2026, 12, 18)))
+        render("title_unfolded", 840, 700, model(Settings(playerName = "Travis", nameChosen = true, welcomed = true, theme = BaseTheme.FLANNEL_CABIN, board = "moosehead"), LocalDate(2026, 12, 18)))
     }
 
     @Test
@@ -89,7 +89,7 @@ class ScreenRenderTest {
             BaseTheme.PINE_TAVERN to LocalDate(2026, 10, 30),
         )
         for ((theme, date) in combos) {
-            render("theme_${theme.name.lowercase()}_${Season.forDate(date).name.lowercase()}", 412, 900, model(Settings(playerName = "Travis", nameChosen = true, theme = theme), date))
+            render("theme_${theme.name.lowercase()}_${Season.forDate(date).name.lowercase()}", 412, 900, model(Settings(playerName = "Travis", nameChosen = true, welcomed = true, theme = theme), date))
         }
     }
 
@@ -111,8 +111,34 @@ class ScreenRenderTest {
     }
 
     @Test
+    fun welcomeAndScoringSheet() {
+        val w = model(Settings(playerName = "", nameChosen = false, welcomed = false))
+        render("title_welcome", 412, 900, w)
+        val r = model(); r.go(Screen.RULES); render("page_scoring", 412, 1400, r)
+    }
+
+    @Test
+    fun gameSmallPhone() {
+        val m = model()
+        m.openTable(table(m, midGame(21)))
+        render("game_phone_small", 360, 760, m)
+    }
+
+    /** A hand where some cards would score right now, to see the gold +N badges. */
+    @Test
+    fun gameScoringBadges() {
+        val seed = (1..400).first { sd ->
+            val s = midGame(sd, cardsPlayed = 2)
+            s.turn == 0 && s.phase == Phase.PEG && s.count in 1..30 && s.playable(0).any { com.geoguy89.cribbage.ui.pegPoints(s, it) > 0 }
+        }
+        val m = model()
+        m.openTable(table(m, midGame(seed, cardsPlayed = 2)))
+        render("game_badges", 412, 900, m)
+    }
+
+    @Test
     fun gameDiscard() {
-        val m = model(Settings(playerName = "Travis", nameChosen = true, board = "eastport", theme = BaseTheme.FLANNEL_CABIN))
+        val m = model(Settings(playerName = "Travis", nameChosen = true, welcomed = true, board = "eastport", theme = BaseTheme.FLANNEL_CABIN))
         val s = Rules.newGame(Random(3))
         m.openTable(table(m, s))
         render("game_discard", 412, 900, m)
@@ -120,17 +146,17 @@ class ScreenRenderTest {
 
     @Test
     fun gameUnfoldedAndTabletop() {
-        val m = model(Settings(playerName = "Travis", nameChosen = true, board = "katahdin", theme = BaseTheme.LOON_NIGHT))
+        val m = model(Settings(playerName = "Travis", nameChosen = true, welcomed = true, board = "katahdin", theme = BaseTheme.LOON_NIGHT))
         m.openTable(table(m, midGame(8)))
         render("game_unfolded", 840, 760, m)
-        val m2 = model(Settings(playerName = "Travis", nameChosen = true, board = "allagash"))
+        val m2 = model(Settings(playerName = "Travis", nameChosen = true, welcomed = true, board = "allagash"))
         m2.openTable(table(m2, midGame(9)))
         render("game_tabletop", 840, 760, m2, Posture(tabletopHingeY = 370f, hingeThickness = 0f))
     }
 
     @Test
     fun showOverlay() {
-        val m = model(Settings(playerName = "Travis", nameChosen = true, board = "schoodic"))
+        val m = model(Settings(playerName = "Travis", nameChosen = true, welcomed = true, board = "schoodic"))
         val s = midGame(11)
         m.openTable(table(m, s, shown = (s.lastShow?.hand ?: 1) - 1))
         render("game_show", 412, 900, m)

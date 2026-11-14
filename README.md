@@ -9,9 +9,13 @@ game with interactive lessons, or play friends live or turn by turn.
 finds newer releases itself and offers **Update now** on its title screen.
 
 
-| Title | Playing | Counting the show |
+| First launch | A guided game | The full tutor explains each step |
 |---|---|---|
-| ![](docs/screenshots/title_phone.png) | ![](docs/screenshots/game_discard.png) | ![](docs/screenshots/game_show.png) |
+| ![](docs/screenshots/title_welcome.png) | ![](docs/screenshots/game_badges.png) | ![](docs/screenshots/game_tutor.png) |
+
+| Choosing crib cards | Counting the show | Scoring cheat sheet |
+|---|---|---|
+| ![](docs/screenshots/game_discard.png) | ![](docs/screenshots/game_show.png) | ![](docs/screenshots/page_scoring.png) |
 
 | Unfolded foldable | Half-folded (tabletop) |
 |---|---|
@@ -44,6 +48,7 @@ All of these are rendered by the game's own code (`./gradlew :shared:desktopTest
   shoreline), Bar Harbor (Mount Desert Island raised out of a poured sea), Katahdin (switchbacks up the mountain),
   Camden Harbor (rolling waves and windjammers) and the Allagash (one bank each). Lake and island shapes are the real
   ones, from OpenStreetMap. Fish jump in the lakes; pegs leapfrog hole to hole.
+* **Built for beginners:** a guide strip shows the step you're on (Crib, Play, Count), whose turn it is and what to do; cards that would score are marked **+N**; a scoring cheat sheet shows every score with real cards; a first-launch welcome offers lessons or a guided game.
 * **Solo play** against three opponents: Summer Visitor, Camp Regular and Old-Timer (which weighs every starter and
   minds the crib).
 * **Learn to play**: eight hands-on lessons (find the fifteens, count hands, choose discards, peg) plus endless
