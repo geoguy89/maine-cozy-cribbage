@@ -50,6 +50,8 @@ jobs:
     name: Build Android APK
     needs: test
     runs-on: ubuntu-latest
+    outputs:
+      signed: ${{ steps.key.outputs.signed }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-java@v4
@@ -60,14 +62,16 @@ jobs:
       - name: Make gradlew executable
         run: chmod +x ./gradlew
       - name: Signing key
+        id: key
         env:
           KEYSTORE_B64: ${{ secrets.CRIBBAGE_KEYSTORE_B64 }}
         run: |
           if [ -n "$KEYSTORE_B64" ]; then
             echo "$KEYSTORE_B64" | base64 -d > "$RUNNER_TEMP/cribbage-release.jks"
             echo "CRIBBAGE_KEYSTORE_FILE=$RUNNER_TEMP/cribbage-release.jks" >> "$GITHUB_ENV"
+            echo "signed=true" >> "$GITHUB_OUTPUT"
           else
-            echo "::warning::No signing key in secrets: this APK is debug-signed and won't update an installed release."
+            echo "::warning::No signing key in secrets: this APK is debug-signed, so it's kept as a build artifact and not released."
           fi
       - name: Build release APK
         env:
@@ -85,7 +89,8 @@ jobs:
   release:
     name: Publish GitHub Release
     needs: android
-    if: github.event_name != 'pull_request'
+    # Only signed builds are released: every release must carry the same key so it can update the last one.
+    if: github.event_name != 'pull_request' && needs.android.outputs.signed == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/download-artifact@v4
