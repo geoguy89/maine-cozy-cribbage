@@ -4,6 +4,7 @@ import kotlin.math.PI
 import kotlin.math.sin
 import kotlin.random.Random
 
+
 /** Every sound effect, synthesised: wooden clicks for pegs, papery snaps for cards, and a loon for luck. */
 object SoundDesigns {
     const val SFX_RATE = 22050
@@ -103,75 +104,5 @@ object SoundDesigns {
         var y = 0f
         for (i in buf.indices) { y += a * (buf[i] - y); buf[i] = y }
         return buf
-    }
-}
-
-/**
- * The soundtrack: soft, folky waltzes in the spirit of a kitchen party down east, generated once and looped
- * seamlessly. Fingerpicked guitar over a warm pad, with a loon now and then on the lakeside tune and sleigh bells
- * for the holidays.
- */
-object MusicComposer {
-    const val RATE = 22050
-
-    private val chords = mapOf(
-        "D" to intArrayOf(50, 54, 57), "G" to intArrayOf(55, 59, 62), "A" to intArrayOf(57, 61, 64), "Bm" to intArrayOf(47, 50, 54),
-        "Em" to intArrayOf(52, 55, 59), "F#m" to intArrayOf(54, 57, 61), "C" to intArrayOf(48, 52, 55), "Am" to intArrayOf(57, 60, 64),
-    )
-
-    fun compose(tune: Tune): FloatArray = when (tune) {
-        Tune.LAKESIDE -> waltz(listOf("D", "D", "G", "D", "Bm", "G", "A", "A", "D", "D", "G", "Em", "G", "A", "D", "D"), bpm = 84.0, seed = 1, loon = true, bells = false)
-        Tune.WOODSTOVE -> waltz(listOf("Em", "Em", "C", "G", "D", "D", "Em", "Em", "C", "G", "D", "Bm", "C", "D", "Em", "Em"), bpm = 76.0, seed = 2, loon = false, bells = false)
-        Tune.HOLIDAY -> waltz(listOf("G", "G", "C", "G", "Em", "Am", "D", "D", "G", "G", "C", "Am", "G", "D", "G", "G"), bpm = 88.0, seed = 3, loon = false, bells = true)
-    }
-
-    private fun waltz(progression: List<String>, bpm: Double, seed: Int, loon: Boolean, bells: Boolean): FloatArray {
-        val s = Synth(RATE)
-        val beat = (60.0 / bpm).toFloat()
-        val bar = beat * 3
-        val loop = bar * progression.size
-        val b = s.buffer(loop + 5f)
-        val rnd = Random(seed)
-        // A simple melody that walks the chord tones, an octave up, one note a beat with the odd rest.
-        progression.forEachIndexed { i, name ->
-            val t0 = i * bar
-            val ch = chords.getValue(name)
-            // Bass on one, a soft pad under everything.
-            s.pluck(b, t0, s.midi(ch[0] - 12.0), bar * 1.4f, 0.22f, damping = 0.998f, bright = 0.25f)
-            for (n in ch) for (d in doubleArrayOf(-0.06, 0.06)) {
-                s.tone(b, t0, s.midi(n + d), s.midi(n + d), bar + 0.6f, 0.018f, Synth.Wave.TRIANGLE, attack = 0.9f, release = 1.0f, vibrato = 0.002)
-            }
-            // Fingerpicked guitar: root-fifth-third pattern in eighths.
-            val pattern = intArrayOf(ch[0], ch[2], ch[1] + 12, ch[2], ch[1] + 12, ch[2])
-            for (k in pattern.indices) {
-                val v = 0.13f + rnd.nextFloat() * 0.04f - (if (k % 2 == 1) 0.03f else 0f)
-                s.pluck(b, t0 + k * beat / 2, s.midi(pattern[k].toDouble()), beat * 2f, v, damping = 0.997f, bright = 0.4f)
-            }
-            // Melody on top.
-            for (k in 0 until 3) {
-                if (rnd.nextFloat() < 0.22f) continue
-                val n = ch[rnd.nextInt(3)] + 24 - (if (rnd.nextBoolean()) 12 else 0)
-                s.pluck(b, t0 + k * beat, s.midi(n.toDouble()), beat * 2.2f, 0.12f, damping = 0.9975f, bright = 0.55f)
-            }
-            if (bells) {
-                // Sleigh bells on the beat, a celesta sparkle every other bar.
-                for (k in 0 until 3) s.noise(b, t0 + k * beat, 0.12f, 0.05f, 9000.0, 6000.0, decay = 0.04f, highpass = true)
-                if (i % 2 == 0) s.bell(b, t0 + beat, s.midi(ch[2] + 24.0), 2f, 0.06f, bright = 0.6f)
-            }
-        }
-        if (loon) {
-            SoundDesigns.loon(s, 0.05f, bar * 5.5f, b)
-        }
-        for (i in b.indices) b[i] *= (0.94f + 0.06f * sin(2 * PI * 0.1 * i / RATE).toFloat())
-        val wet = s.reverb(SoundDesigns.lowpass(b, 4600.0, RATE), 0.5f, 0.86f, 0.4f)
-        return s.normalize(foldLoop(wet, loop), 0.65f)
-    }
-
-    /** Fold the tail back onto the start so the loop is seamless. */
-    private fun foldLoop(wet: FloatArray, loopSeconds: Float): FloatArray {
-        val loopLen = (loopSeconds * RATE).toInt()
-        val out = FloatArray(loopLen) { wet[it] }
-        for (i in 0 until wet.size - loopLen) out[i % loopLen] += wet[loopLen + i]
-        return out
     }
 }

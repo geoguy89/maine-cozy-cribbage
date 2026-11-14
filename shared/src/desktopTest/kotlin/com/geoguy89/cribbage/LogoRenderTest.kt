@@ -57,7 +57,7 @@ class LogoRenderTest {
                     drawCircle(Brush.radialGradient(listOf(Color(0xFF7FDCE6), Color(0xFF3FBCCB), Color(0xFF2B98A7)), c - Offset(8f, 10f), 40f), 28f, c)
                     drawCircle(Color(0xFF1C5E66), 28f, c, style = Stroke(0.7f))
                     drawCircle(Color(0xFF1C5E66), 25.5f, c, style = Stroke(0.3f))
-                    engrave(Sil.MOOSE, Rect(29f, 27f, 73f, 71f), Wood.STAINED, 1f, fill = Color(0xFF173C42), shine = false)
+                    engrave(Sil.MOOSE, Rect(25f, 20f, 75f, 70f), Wood.STAINED, 1f, fill = Color(0xFF173C42), shine = false)
                     // Two pegs mid-race.
                     val a1 = -0.55f; val a2 = -0.95f
                     peg(c + Offset(cos(a1), sin(a1)) * 36.5f, 1.9f, Color(0xFFC62828))
@@ -68,6 +68,27 @@ class LogoRenderTest {
             val bytes = scene.render().encodeToData(EncodedImageFormat.PNG)!!.bytes
             File("../docs").mkdirs()
             File("../docs/logo.png").writeBytes(bytes)
+        }
+    }
+
+    /** Every silhouette, large, for checking the drawings. */
+    @Test
+    fun silhouettes() {
+        val all = Sil.entries
+        val cell = 360
+        val cols = 4
+        val rows = (all.size + cols - 1) / cols
+        ImageComposeScene(cell * cols, cell * rows, Density(1f)) {
+            Canvas(Modifier.fillMaxSize()) {
+                drawRect(Color(0xFFF1D7A8))
+                all.forEachIndexed { i, s ->
+                    val x = (i % cols) * cell.toFloat(); val y = (i / cols) * cell.toFloat()
+                    engrave(s, Rect(x + 20f, y + 20f, x + cell - 20f, y + cell - 20f), Wood.MAPLE, 0.9f)
+                }
+            }
+        }.use { scene ->
+            File("build/screenshots").mkdirs()
+            File("build/screenshots/silhouettes.png").writeBytes(scene.render().encodeToData(EncodedImageFormat.PNG)!!.bytes)
         }
     }
 }

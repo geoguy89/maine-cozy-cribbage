@@ -130,7 +130,7 @@ fun BoardView(
             val k = size.width / 100f
             withTransform({ scale(k, k, Offset.Zero) }) {
                 if (ambient) for ((i, w) in waters.withIndex()) wildlife(w, time, i)
-                val r = design.trackSpec.holeR * 1.3f
+                val r = design.trackSpec.holeR * 1.6f
                 for (p in 0..1) for (j in 0..1) {
                     val pos = geometry.position(p, pegPos[p][j].value)
                     peg(pos, r, pegs.colors[p], lift[p][j].value)

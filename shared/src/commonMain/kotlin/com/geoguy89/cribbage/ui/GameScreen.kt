@@ -25,6 +25,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.requiredSize
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
@@ -81,6 +82,7 @@ fun GameScreen(model: AppModel, table: Table, posture: Posture) {
     val show = table.pendingShow
     var step by remember(show?.hand) { mutableStateOf(ShowStep()) }
     var sheet by remember { mutableStateOf<Sheet?>(null) }
+    var zoom by remember { mutableStateOf(false) }
     val display = show?.let { scoresAt(it, step) } ?: state.scores
     val pegColors = model.settings.pegs.colors
     // Seat 0's pegs are always the first colour, so both players see the same board.
@@ -99,7 +101,7 @@ fun GameScreen(model: AppModel, table: Table, posture: Posture) {
         val wide = posture.bookHingeX != null || (mw >= 600.dp && mw > mh * 0.8f)
         val tabletop = posture.tabletopHingeY != null
         val board: @Composable (Modifier) -> Unit = { m ->
-            BoardView(model.board, boardScores, boardPrev, m, pegs = model.settings.pegs, ambient = model.settings.ambient, onPegLanded = { model.sound(Sfx.PEG, 0.9f) })
+            BoardView(model.board, boardScores, boardPrev, m.clickable { zoom = true }, pegs = model.settings.pegs, ambient = model.settings.ambient, onPegLanded = { model.sound(Sfx.PEG, 0.9f) })
         }
         when {
             tabletop -> Column(Modifier.fillMaxSize()) {
@@ -135,11 +137,12 @@ fun GameScreen(model: AppModel, table: Table, posture: Posture) {
             else -> Column(Modifier.fillMaxSize().padding(horizontal = 8.dp, vertical = 6.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                 ScoreBar(model, table, display) { sheet = Sheet.MENU }
                 Spacer(Modifier.height(6.dp))
-                Box(Modifier.fillMaxWidth().heightIn(max = mh * 0.36f), contentAlignment = Alignment.Center) { board(Modifier) }
+                Box(Modifier.fillMaxWidth().heightIn(max = mh * 0.42f), contentAlignment = Alignment.Center) { board(Modifier) }
                 PlayColumn(model, table, compact = true, onSheet = { sheet = it })
             }
         }
 
+        if (zoom) BoardZoom(model, boardScores, boardPrev) { zoom = false }
         // The show, then the end of the game, over everything else.
         if (show != null) ShowOverlay(model, table, show, step, onStep = { step = it }, onDone = { table.ackShow(); model.sound(Sfx.DEAL) })
         else if (state.over) GameOverOverlay(model, table)
@@ -159,7 +162,7 @@ private fun ScoreBar(model: AppModel, table: Table, display: List<Int>, onMenu: 
     val colors = model.settings.pegs.colors
     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
         WoodButton("☰", onMenu, size = 16.sp, modifier = Modifier.width(48.dp))
-        Plaque("${model.board.name}, ME", Modifier.weight(1f), size = 13.sp)
+        Plaque("${model.board.name}, ME  ⤢", Modifier.weight(1f), size = 13.sp)
         Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(3.dp)) {
             Plaque("${table.names[table.me].take(10)}: ${display[table.me]}", size = 13.sp, pegColor = colors[table.me])
             Plaque("${table.names[table.opponent].take(10)}: ${display[table.opponent]}", size = 13.sp, pegColor = colors[table.opponent])
@@ -214,9 +217,18 @@ private fun ColumnScope.PlayColumn(model: AppModel, table: Table, compact: Boole
     if (showOpponent) OpponentRow(table)
     if (showTable) PlayArea(model, table, Modifier.fillMaxWidth().weight(1f).heightIn(min = 96.dp)) else Spacer(Modifier.weight(1f))
     if (tip != null) {
+        var why by remember(tip) { mutableStateOf(false) }
         Parchment(Modifier.fillMaxWidth().padding(vertical = 4.dp), pins = !compact) {
-            Hand("tutorial helper", size = 15.sp, weight = FontWeight.Bold, color = Color(0xFF6B3A1E))
-            Hand(tip.text, size = if (compact) 14.sp else 16.sp)
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Hand("tutorial helper", Modifier.weight(1f), size = 15.sp, weight = FontWeight.Bold, color = Color(0xFF6B3A1E))
+                if (tip.why.isNotEmpty()) Box(Modifier.clickable { why = !why }.padding(horizontal = 8.dp, vertical = 2.dp)) {
+                    Hand(if (why) "Hide ▴" else "Why? ▾", size = 15.sp, weight = FontWeight.Bold, color = Color(0xFF8A3A20))
+                }
+            }
+            Hand(tip.text.removeSuffix(" Tap Why? for the reasoning."), size = if (compact) 14.sp else 16.sp)
+            if (why) Column(Modifier.heightIn(max = 230.dp).verticalScrollCompat().padding(top = 6.dp)) {
+                for (line in tip.why) Hand(line, Modifier.padding(vertical = 2.dp), size = 14.sp, color = Color(0xFF2E2014))
+            }
         }
     }
     HandRow(model, table, Modifier.fillMaxWidth().padding(top = 4.dp))
@@ -603,5 +615,24 @@ fun Toast(text: String, modifier: Modifier = Modifier) {
         Box(Modifier.padding(horizontal = 24.dp).plank(LocalUi.current.wood, 77, 10.dp).padding(horizontal = 16.dp, vertical = 8.dp)) {
             Txt(text, size = 15.sp, align = TextAlign.Center, weight = FontWeight.Medium)
         }
+    }
+}
+
+/**
+ * The board at full size. On a phone held upright it's turned sideways, so it can use the screen's height and the
+ * holes and pegs are big enough to follow. Tap anywhere to close.
+ */
+@Composable
+private fun BoardZoom(model: AppModel, scores: List<Int>, prev: List<Int>, onClose: () -> Unit) {
+    val ui = LocalUi.current
+    BoxWithConstraints(Modifier.fillMaxSize().drawBehind { drawRect(Color.Black.copy(alpha = 0.75f)) }
+        .clickable(remember { androidx.compose.foundation.interaction.MutableInteractionSource() }, null, onClick = onClose), contentAlignment = Alignment.Center) {
+        val turn = maxHeight > maxWidth && model.board.aspect > 1.05f
+        val w = if (turn) maxHeight else maxWidth
+        val h = if (turn) maxWidth else maxHeight
+        Box(Modifier.requiredSize(w, h).graphicsLayer { rotationZ = if (turn) 90f else 0f }.padding(12.dp), contentAlignment = Alignment.Center) {
+            BoardView(model.board, scores, prev, Modifier, pegs = model.settings.pegs, ambient = model.settings.ambient)
+        }
+        Txt("Tap to close", Modifier.align(Alignment.BottomCenter).padding(bottom = 12.dp), size = 14.sp, color = ui.onTable, shadow = true)
     }
 }

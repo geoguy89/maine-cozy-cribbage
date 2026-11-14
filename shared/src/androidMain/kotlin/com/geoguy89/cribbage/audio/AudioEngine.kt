@@ -122,7 +122,7 @@ class AudioEngine(private val context: Context) : AudioPlayer {
     }
 
     private companion object {
-        const val SOUND_VERSION = 1
+        const val SOUND_VERSION = 2
         const val MUSIC_GAIN = 0.6f
     }
 }
