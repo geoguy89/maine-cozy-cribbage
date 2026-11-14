@@ -188,7 +188,9 @@ fun WoodButton(
         contentAlignment = Alignment.Center,
     ) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.Center) {
-            Carved(text.uppercase(), size, wood = if (enabled) wood else Wood.DRIFTWOOD, font = LocalUi.current.fonts.label)
+            // Long labels shrink rather than get cut off.
+            val fit = if (text.length > 13) size * (13f / text.length).coerceAtLeast(0.7f) else size
+            Carved(text.uppercase(), fit, wood = if (enabled) wood else Wood.DRIFTWOOD, font = LocalUi.current.fonts.label)
             if (icon != null) { Spacer(Modifier.width(8.dp)); icon() }
         }
     }

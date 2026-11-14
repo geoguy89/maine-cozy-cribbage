@@ -29,7 +29,17 @@ class CoachTest {
                 }
                 s = when (s.phase) {
                     Phase.DISCARD -> { val p = (0..1).first { s.hands[it].size == 6 }; Rules.discard(s, p, Ai.chooseDiscard(s.hands[p], s.dealer == p, Difficulty.HARD, r)) }
-                    Phase.PEG -> Rules.play(s, s.turn, Ai.choosePlay(s, s.turn, Difficulty.HARD, r), r)
+                    Phase.PEG -> {
+                        val p = s.turn
+                        val card = Ai.choosePlay(s, p, if (p == 0) Difficulty.EASY else Difficulty.HARD, r)
+                        val next = Rules.play(s, p, card, r)
+                        if (next.hand == s.hand && tips < 8) {
+                            val rev = Coach.reviewPlay(s, next, p, card, 0, listOf("You", "Old-Timer"))
+                            out.appendLine("-- ${rev.title}")
+                            rev.why.forEach { out.appendLine("   $it") }
+                        }
+                        next
+                    }
                     Phase.OVER -> s
                 }
             }

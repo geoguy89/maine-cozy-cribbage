@@ -122,12 +122,13 @@ fun GameScreen(model: AppModel, table: Table, posture: Posture) {
                 }
             }
             wide -> Row(Modifier.fillMaxSize()) {
-                val split = posture.bookHingeX?.dp ?: (mw * 0.52f)
+                val split = posture.bookHingeX?.dp ?: (mw * 0.56f)
                 Column(Modifier.width(split).fillMaxHeight().padding(10.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                     ScoreBar(model, table, display) { sheet = Sheet.MENU }
                     Spacer(Modifier.height(8.dp))
                     OpponentRow(table)
-                    Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) { board(Modifier) }
+                    Spacer(Modifier.height(6.dp))
+                    Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.TopCenter) { board(Modifier) }
                 }
                 Spacer(Modifier.width(posture.hingeThickness.dp))
                 Column(Modifier.weight(1f).fillMaxHeight().padding(10.dp)) {
@@ -217,7 +218,7 @@ private fun ColumnScope.PlayColumn(model: AppModel, table: Table, compact: Boole
     if (showOpponent) OpponentRow(table)
     if (showTable) PlayArea(model, table, Modifier.fillMaxWidth().weight(1f).heightIn(min = 96.dp)) else Spacer(Modifier.weight(1f))
     if (tip != null) {
-        var why by remember(tip) { mutableStateOf(false) }
+        var why by remember { mutableStateOf(false) }
         Parchment(Modifier.fillMaxWidth().padding(vertical = 4.dp), pins = !compact) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Hand("tutorial helper", Modifier.weight(1f), size = 15.sp, weight = FontWeight.Bold, color = Color(0xFF6B3A1E))
@@ -225,8 +226,16 @@ private fun ColumnScope.PlayColumn(model: AppModel, table: Table, compact: Boole
                     Hand(if (why) "Hide ▴" else "Why? ▾", size = 15.sp, weight = FontWeight.Bold, color = Color(0xFF8A3A20))
                 }
             }
-            Hand(tip.text.removeSuffix(" Tap Why? for the reasoning."), size = if (compact) 14.sp else 16.sp)
-            if (why) Column(Modifier.heightIn(max = 230.dp).verticalScrollCompat().padding(top = 6.dp)) {
+            val review = table.review
+            if (review != null) Hand("Last: " + review.text, size = if (compact) 13.sp else 15.sp, color = Color(0xFF5A3A1E))
+            Hand(tip.text.removeSuffix(" Tap Why? for the reasoning."), size = if (compact) 14.sp else 16.sp, weight = FontWeight.Medium)
+            if (why) Column(Modifier.heightIn(max = 260.dp).verticalScrollCompat().padding(top = 6.dp)) {
+                Hand(Coach.VALUES, Modifier.padding(vertical = 2.dp), size = 14.sp, color = Color(0xFF8A3A20), weight = FontWeight.Bold)
+                if (review != null) {
+                    Hand(review.title, Modifier.padding(top = 6.dp), size = 15.sp, weight = FontWeight.Bold)
+                    for (line in review.why) Hand(line, Modifier.padding(vertical = 2.dp), size = 14.sp, color = Color(0xFF2E2014))
+                    Hand("What to do now", Modifier.padding(top = 8.dp), size = 15.sp, weight = FontWeight.Bold)
+                }
                 for (line in tip.why) Hand(line, Modifier.padding(vertical = 2.dp), size = 14.sp, color = Color(0xFF2E2014))
             }
         }
@@ -385,6 +394,9 @@ private fun HandRow(model: AppModel, table: Table, modifier: Modifier) {
                         },
                 ) {
                     CardFace(card, Modifier.height(cardH), dim = s.phase == Phase.PEG && table.myTurn && !playable, glow = if (sel) ui.accent else null)
+                    if (model.settings.coach && !table.online) Box(Modifier.align(Alignment.BottomCenter).padding(bottom = 6.dp).drawBehind {
+                        drawRoundRect(Color(0xFF3B2414).copy(alpha = 0.85f), cornerRadius = CornerRadius(8.dp.toPx()))
+                    }.padding(horizontal = 7.dp, vertical = 1.dp)) { Txt("${card.value}", size = 12.sp, color = Color.White, weight = FontWeight.Bold) }
                 }
             }
         }
@@ -399,7 +411,7 @@ private fun ActionRow(model: AppModel, table: Table, hint: List<Card>, onSheet: 
     val (label, enabled, action) = when {
         s.over -> Triple("Game over", false) {}
         !table.myTurn -> Triple(if (table.busy) "Sending..." else "${table.names[table.opponent].take(12)}'s turn", false) {}
-        s.phase == Phase.DISCARD -> if (sel.size == 2) Triple("Throw to crib", true) { table.discard(sel) } else Triple("Pick ${2 - sel.size} for the crib", false) {}
+        s.phase == Phase.DISCARD -> if (sel.size == 2) Triple("Throw to crib", true) { table.discard(sel) } else Triple(if (sel.isEmpty()) "Pick 2 cards" else "Pick 1 more", false) {}
         else -> sel.firstOrNull()?.let { c -> Triple("Play ${c.short}", c.value + s.count <= 31) { table.play(c) } } ?: Triple("Pick a card", false) {}
     }
     Row(Modifier.fillMaxWidth().padding(top = 6.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {

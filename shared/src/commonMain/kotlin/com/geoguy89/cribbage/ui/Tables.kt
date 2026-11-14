@@ -48,6 +48,8 @@ abstract class Table {
     var shownHand by mutableIntStateOf(0)
     var popups by mutableStateOf<List<Popup>>(emptyList())
     var emote by mutableStateOf<Pair<Int, String>?>(null)
+    /** The helper's look back at the last card laid (or the player's discard). */
+    var review by mutableStateOf<com.geoguy89.cribbage.game.Tip?>(null)
     private var seenSeq = -1
     private var popupId = 0
     /** Sounds and haptics for new events. */
@@ -125,6 +127,7 @@ class LocalTable(
     }
 
     private fun update(s: GameState) {
+        if (s.hand != state.hand) review = null
         state = s
         absorb(s)
         save(s, shownHand, seed)
@@ -140,13 +143,17 @@ class LocalTable(
     override fun discard(cards: List<Card>) {
         if (state.phase != Phase.DISCARD || state.hands[me].size != 6) return
         selected = emptySet()
+        val six = state.hands[me]
         update(Rules.discard(state, me, cards))
+        review = com.geoguy89.cribbage.game.Coach.reviewDiscard(six, cards, state.dealer == me)
     }
 
     override fun play(card: Card) {
         if (!myTurn || state.phase != Phase.PEG || card.value + state.count > 31) return
         selected = emptySet()
+        val before = state
         update(Rules.play(state, me, card, random))
+        if (state.hand == before.hand) review = com.geoguy89.cribbage.game.Coach.reviewPlay(before, state, me, card, me, names)
     }
 
     /** The computer's moves: wait for the player to finish looking at a show, then think briefly and act. */
@@ -163,7 +170,10 @@ class LocalTable(
                 }
                 s.phase == Phase.PEG && s.turn == bot -> {
                     delay((850 + random.nextInt(450)) * pace)
-                    update(Rules.play(state, bot, Ai.choosePlay(state, bot, difficulty, random), random))
+                    val before = state
+                    val card = Ai.choosePlay(state, bot, difficulty, random)
+                    update(Rules.play(state, bot, card, random))
+                    if (state.hand == before.hand) review = com.geoguy89.cribbage.game.Coach.reviewPlay(before, state, bot, card, me, names)
                 }
             }
         }

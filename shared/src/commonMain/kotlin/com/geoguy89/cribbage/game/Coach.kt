@@ -128,7 +128,7 @@ object Coach {
                 else -> "they could score with ${threats.joinToString("; ")}"
             }
             val odds = if (s.hands[1 - me].isNotEmpty() && count != 31 && threats.isNotEmpty()) " (weighing how likely they are to hold those, about ${Ai.fmt(o.risk)} points back on average)" else ""
-            why += "• ${o.card.short} → count $count: $mine; $theirs$odds."
+            why += "• ${o.card.short} (counts ${o.card.value}) → count $count: $mine; $theirs$odds."
         }
         val oppHolds = s.hands[1 - me].size
         why += when {
@@ -178,6 +178,81 @@ object Coach {
     )
 
     private fun article(word: String) = (if (word.first() in "aeiou") "an " else "a ") + word
+
+    /** What each card counts, for the top of every explanation. */
+    const val VALUES = "Card values: A = 1 · 2 to 10 = their number · J, Q, K = 10. Only the count matters for fifteens and 31; ranks matter for pairs and runs."
+
+    private fun scored(items: List<ScoreItem>) = items.filter { it.points > 0 }.joinToString(" and ") { it.label.lowercase() }
+
+    /**
+     * Looking back at a card just laid: what it counted and scored, and (for the player's own card) how it compared
+     * with the helper's pick, or (for the opponent's) what the player can now score in reply.
+     */
+    fun reviewPlay(before: GameState, after: GameState, player: Int, card: Card, me: Int, names: List<String>): Tip {
+        val who = if (player == me) "You" else names[player]
+        val count = before.count + card.value
+        val items = Scoring.pegging(before.pile.map { it.card } + card, count)
+        val pts = items.sumOf { it.points }
+        val lines = mutableListOf<String>()
+        lines += "$who laid the ${card.longName}, which counts ${card.value}: the count went from ${before.count} to $count." +
+            if (pts > 0) " That scored ${scored(items)}." else " No points for that."
+        // Anything that happened straight after: Go, the go point, last card.
+        val extra = after.log.filter { it.seq > before.seq && it.count > 0 && it.item.kind in setOf(ScoreKind.SAYS_GO, ScoreKind.GO, ScoreKind.LAST_CARD) }
+        for (e in extra) lines += when (e.item.kind) {
+            ScoreKind.SAYS_GO -> "${if (e.player == me) "You" else names[e.player]} couldn't lay a card without passing 31, so ${if (e.player == me) "you" else "they"} said Go."
+            ScoreKind.GO -> "Neither player could go, so ${if (e.player == me) "you" else names[e.player]} took 1 for the go (last to lay a card) and the count started again at 0."
+            else -> "That was the last card of the hand: 1 point for ${if (e.player == me) "you" else names[e.player]}."
+        }
+        if (player == me) {
+            val options = Ai.playOptions(before, me)
+            val best = options.first()
+            if (best.card == card || options.size == 1) {
+                lines += "That was the helper's pick too" + if (options.size == 1) " (your only card that fit under 31)." else "."
+            } else {
+                val mine = options.firstOrNull { it.card == card }
+                lines += "The helper would have laid the ${best.card.short} (counts ${best.card.value}): " + when {
+                    best.immediate > (mine?.immediate ?: 0) -> "it scored ${scored(best.points)} on the spot."
+                    else -> "it left them about ${Ai.fmt(best.risk)} points to score back on average, against ${Ai.fmt(mine?.risk ?: 0.0)} for yours."
+                }
+            }
+            val unseen = Card.deck - (before.hands[me] + before.played.map { it.card } + listOfNotNull(before.starter)).toSet()
+            if (count < 31 && before.hands[1 - me].isNotEmpty()) {
+                val t = threats(before.pile.map { it.card } + card, count, unseen)
+                lines += if (t.isEmpty()) "Nothing they lay next can score off it." else "From here they could score with ${t.joinToString("; ")}."
+            }
+        } else if (after.phase == Phase.PEG && after.hand == before.hand && after.turn == me) {
+            // Their card: what it opens up for the player.
+            val replies = after.hands[me].filter { it.value + after.count <= 31 }.mapNotNull { c ->
+                val r = Scoring.pegging(after.pile.map { it.card } + c, after.count + c.value)
+                if (r.isEmpty()) null else "your ${c.short} (counts ${c.value}) makes ${scored(r)}"
+            }
+            lines += if (replies.isNotEmpty()) "Your chance: ${replies.joinToString("; ")}." else "None of your cards can score off it this time."
+            when (count) {
+                5, 21 -> lines += "Leaving $count is a gift: any ten-card makes ${if (count == 5) "15" else "31"}."
+                in 11..14 -> lines += "With the count at $count, a card worth ${15 - count} would make 15."
+            }
+        }
+        return Tip("Why the ${card.short}?", lines.first(), listOf(card), lines)
+    }
+
+    /** Looking back at the player's discard: where it ranked among the fifteen ways to throw, and why. */
+    fun reviewDiscard(six: List<Card>, thrown: List<Card>, ownCrib: Boolean): Tip {
+        val options = Ai.discardOptions(six, ownCrib, samples = 40)
+        val rank = options.indexOfFirst { it.throwAway.toSet() == thrown.toSet() } + 1
+        val mine = options[rank - 1]
+        val best = options.first()
+        val lines = mutableListOf<String>()
+        lines += "You threw ${thrown.joinToString(" and ") { "${it.short} (counts ${it.value})" }} to ${if (ownCrib) "your" else "their"} crib and kept ${mine.keep.joinToString(" ")}."
+        lines += when (rank) {
+            1 -> "That's the best of the 15 possible throws: your hand averages ${Ai.fmt(mine.handAverage)} with the starter."
+            in 2..3 -> "That's #$rank of 15, nearly the best (${Ai.fmt(mine.value)} against ${Ai.fmt(best.value)} a hand)."
+            else -> "That's #$rank of 15. Keeping ${best.keep.joinToString(" ")} and throwing ${best.throwAway.joinToString(" ")} averages ${Ai.fmt(best.value)} against ${Ai.fmt(mine.value)}."
+        }
+        val kept = Scoring.score(mine.keep, null)
+        if (kept.total > 0) lines += "Your hand already holds ${kept.total}: ${kept.items.joinToString("; ") { "${it.label.substringBefore(" for").lowercase()} (${it.cards.joinToString(" ")})" }}."
+        lines += if (ownCrib) "Your crib gets about ${Ai.fmt(mine.cribAverage)} from those two." else "Their crib gets about ${Ai.fmt(mine.cribAverage)} from those two."
+        return Tip("Your discard", lines[1], thrown, lines)
+    }
 
     fun describe(items: List<ScoreItem>): String =
         items.joinToString(", ") { "${it.label.lowercase()} (${it.cards.joinToString(" ")})" }
