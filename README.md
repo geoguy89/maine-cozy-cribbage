@@ -1,10 +1,41 @@
-# Maine Cozy Cribbage
+<p align="center"><img src="docs/logo.png" width="160" alt="Maine Cozy Cribbage"></p>
+
+<h1 align="center">Maine Cozy Cribbage</h1>
 
 Two-player cribbage on hand-carved Maine boards, for Android phones and **foldables**. Play the computer, learn the
 game with interactive lessons, or play friends live or turn by turn.
 
 **[Download the latest APK](../../releases/latest)**: `MaineCozyCribbage-x.y.z-android.apk`. Once installed, the game
 finds newer releases itself and offers **Update now** on its title screen.
+
+
+| Title | Playing | Counting the show |
+|---|---|---|
+| ![](docs/screenshots/title_phone.png) | ![](docs/screenshots/game_discard.png) | ![](docs/screenshots/game_show.png) |
+
+| Unfolded foldable | Half-folded (tabletop) |
+|---|---|
+| ![](docs/screenshots/game_unfolded.png) | ![](docs/screenshots/game_tabletop.png) |
+
+| Christmas | Fourth of July | Blueberry season | Halloween |
+|---|---|---|---|
+| ![](docs/screenshots/theme_flannel_cabin_christmas.png) | ![](docs/screenshots/theme_harbor_fog_independence.png) | ![](docs/screenshots/theme_loon_night_blueberry.png) | ![](docs/screenshots/theme_pine_tavern_halloween.png) |
+
+| Learn to play | Pegging lesson | Play with friends |
+|---|---|---|
+| ![](docs/screenshots/lesson_fifteens.png) | ![](docs/screenshots/lesson_pegging.png) | ![](docs/screenshots/page_friends_offline.png) |
+
+### The boards
+
+| | |
+|---|---|
+| ![Sebec Lake](docs/boards/sebec.png) **Sebec Lake** · hard maple, racetrack round the map | ![Moosehead Lake](docs/boards/moosehead.png) **Moosehead Lake** · black cherry, oval track and a bull moose |
+| ![Schoodic Lake](docs/boards/schoodic.png) **Schoodic Lake** · the lake inside a walnut brook trout | ![Eastport](docs/boards/eastport.png) **Eastport** · round and teal, two rings of track |
+| ![Rangeley Lake](docs/boards/rangeley.png) **Rangeley Lake** · three streets under Saddleback | ![Sebago Lake](docs/boards/sebago.png) **Sebago Lake** · the track follows the shoreline |
+| ![Bar Harbor](docs/boards/barharbor.png) **Bar Harbor** · Mount Desert Island in a poured sea | ![Katahdin](docs/boards/katahdin.png) **Katahdin** · switchbacks to the summit |
+| ![Camden Harbor](docs/boards/camden.png) **Camden Harbor** · rolling waves and windjammers | ![Allagash](docs/boards/allagash.png) **Allagash Wilderness** · one bank each down the river |
+
+All of these are rendered by the game's own code (`./gradlew :shared:desktopTest` writes them to `shared/build/screenshots`).
 
 ## What's in it
 
