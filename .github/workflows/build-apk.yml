@@ -1,0 +1,106 @@
+name: Build APK & Release
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+env:
+  VERSION: 1.0.0
+
+jobs:
+  test:
+    name: Tests (rules, scoring parity, server)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Make gradlew executable
+        run: chmod +x ./gradlew
+      - name: Rules engine and AI
+        run: ./gradlew :shared:desktopTest --tests '*RulesTest*' --tests '*everyTrackHas120Holes*' --tests '*holidayCalendar*'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: server/package-lock.json
+      - name: Server rules match the app's (shared scoring examples)
+        working-directory: server
+        run: |
+          npm ci
+          npm run typecheck
+          npm run test:rules
+      - name: Server end to end (local Worker)
+        working-directory: server
+        run: |
+          npx wrangler dev --local --port 8787 > wrangler.log 2>&1 &
+          for i in $(seq 1 60); do curl -s localhost:8787/health && break; sleep 1; done
+          npm test
+
+  android:
+    name: Build Android APK
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Make gradlew executable
+        run: chmod +x ./gradlew
+      - name: Signing key
+        env:
+          KEYSTORE_B64: ${{ secrets.CRIBBAGE_KEYSTORE_B64 }}
+        run: |
+          if [ -n "$KEYSTORE_B64" ]; then
+            echo "$KEYSTORE_B64" | base64 -d > "$RUNNER_TEMP/cribbage-release.jks"
+            echo "CRIBBAGE_KEYSTORE_FILE=$RUNNER_TEMP/cribbage-release.jks" >> "$GITHUB_ENV"
+          else
+            echo "::warning::No signing key in secrets: this APK is debug-signed and won't update an installed release."
+          fi
+      - name: Build release APK
+        env:
+          CRIBBAGE_KEYSTORE_PASSWORD: ${{ secrets.CRIBBAGE_KEYSTORE_PASSWORD }}
+          # Every build is newer than the last: the in-app updater compares this with the release tag.
+          CRIBBAGE_BUILD_NUMBER: ${{ github.run_number }}
+        run: ./gradlew :app:assembleRelease
+      - name: Rename
+        run: cp app/build/outputs/apk/release/app-release.apk "MaineCozyCribbage-${VERSION}-android.apk"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: MaineCozyCribbage-apk
+          path: MaineCozyCribbage-*-android.apk
+
+  release:
+    name: Publish GitHub Release
+    needs: android
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: MaineCozyCribbage-apk
+          path: dist
+      - uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ env.VERSION }}-build.${{ github.run_number }}
+          target_commitish: ${{ github.sha }}
+          name: Maine Cozy Cribbage ${{ env.VERSION }} (build ${{ github.run_number }})
+          make_latest: true
+          body: |
+            **Android** (phones & foldables): download `MaineCozyCribbage-${{ env.VERSION }}-android.apk` on your phone and open it
+            (allow "install unknown apps" for your browser when asked).
+
+            Already installed? The game offers this update on its title screen.
+          files: dist/*

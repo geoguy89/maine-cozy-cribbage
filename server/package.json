@@ -1,0 +1,19 @@
+{
+  "name": "maine-cozy-cribbage-server",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Friends, invites and turn-by-turn games for Maine Cozy Cribbage.",
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev --local --port 8787",
+    "deploy": "wrangler deploy",
+    "typecheck": "tsc --noEmit",
+    "test:rules": "node --experimental-strip-types --no-warnings test/rules.mjs",
+    "test": "node test/integration.mjs"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^5.20260929.1",
+    "typescript": "^5.9.0",
+    "wrangler": "^4.143.0"
+  }
+}
