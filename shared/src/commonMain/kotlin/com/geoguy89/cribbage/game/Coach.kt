@@ -38,8 +38,7 @@ object Coach {
     private fun discardWhy(hand: List<Card>, ownCrib: Boolean, options: List<DiscardOption>): List<String> {
         val best = options.first()
         val why = mutableListOf<String>()
-        why += "The goal: keep the four cards that score the most once the starter is cut, and think about what your two thrown cards do in the crib."
-        if (hand.any { it.rank > 10 || it.rank == 1 }) why += "Values: J, Q and K count 10, an Ace counts 1, everything else its number. Fives are gold: they make fifteen with any ten-card, and 16 of the 52 cards count ten."
+        if (hand.any { it.value == 5 }) why += "You hold a 5: fives are gold, since any ten-card (10, J, Q, K: 16 of the 52 cards) makes fifteen with it."
 
         // What the keepers already make.
         val kept = Scoring.score(best.keep, null)
@@ -112,12 +111,11 @@ object Coach {
     private fun pegWhy(s: GameState, me: Int, options: List<PlayOption>): List<String> {
         val why = mutableListOf<String>()
         val best = options.first()
-        why += "The count is ${s.count}. In play you score for making 15 or 31 (2 each), pairing the last card (2, or 6 for three alike), and completing a run of three or more (1 per card)."
         if (s.count == 0) {
             why += "Leading: a card under 5 is safest, because nothing they lay next can make 15 (it would need a card worth more than 10). A 5 is the worst lead: any ten-card (16 of 52) makes 15 off it. Ten-cards are risky too, as their 5 makes 15."
         }
         val unseen = Card.deck - (s.hands[me] + s.played.map { it.card } + listOfNotNull(s.starter)).toSet()
-        why += "What each card would do:"
+        why += "The count is ${s.count}. What each of your cards would do:"
         for (o in options) {
             val count = s.count + o.card.value
             val mine = if (o.immediate > 0) "you score ${o.immediate} (${o.points.joinToString(", ") { it.label.substringBefore(" for").lowercase() }})" else "you score nothing"

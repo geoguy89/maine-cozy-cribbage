@@ -147,6 +147,10 @@ class AppModel(
         if (s.music == 0f) audio.pauseMusic()
         audio.setTune(tuneFor(season))
         if (old.playerName != s.playerName && s.playerName.isNotBlank()) online.setName(s.playerName)
+        (table as? LocalTable)?.let { t ->
+            t.pace = s.pace.factor
+            t.tutor = s.help == com.geoguy89.cribbage.data.Help.TUTOR
+        }
     }
 
     fun sound(sfx: Sfx, volume: Float = 1f, rate: Float = 1f) = audio.play(sfx, volume, rate)
@@ -174,7 +178,7 @@ class AppModel(
         table?.close()
         updateSettings { it.copy(difficulty = difficulty) }
         val seed = Clock.System.now().toEpochMilliseconds()
-        table = LocalTable(scope, difficulty, settings.playerName, null, 0, seed, ::saveSolo).also(::wire)
+        table = LocalTable(scope, difficulty, settings.playerName, null, 0, seed, ::saveSolo, settings.pace.factor, settings.help == com.geoguy89.cribbage.data.Help.TUTOR).also(::wire)
         store.saveGame(SavedGame(table!!.state, difficulty, 0, seed))
         sound(Sfx.SHUFFLE)
         screen = Screen.GAME
@@ -184,7 +188,7 @@ class AppModel(
         val saved = store.savedGame() ?: return newSoloGame()
         table?.close()
         // A fresh seed, so a resumed game doesn't replay the same deals.
-        table = LocalTable(scope, saved.difficulty, settings.playerName, saved.state, saved.shownHand, saved.seed + saved.state.seq, ::saveSolo).also(::wire)
+        table = LocalTable(scope, saved.difficulty, settings.playerName, saved.state, saved.shownHand, saved.seed + saved.state.seq, ::saveSolo, settings.pace.factor, settings.help == com.geoguy89.cribbage.data.Help.TUTOR).also(::wire)
         screen = Screen.GAME
     }
 

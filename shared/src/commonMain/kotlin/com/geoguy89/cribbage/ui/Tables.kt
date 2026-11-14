@@ -6,6 +6,9 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import com.geoguy89.cribbage.game.Ai
 import com.geoguy89.cribbage.game.Card
+import com.geoguy89.cribbage.game.Coach
+import com.geoguy89.cribbage.game.Narrator
+import com.geoguy89.cribbage.game.Note
 import com.geoguy89.cribbage.game.Difficulty
 import com.geoguy89.cribbage.game.GameState
 import com.geoguy89.cribbage.game.LogEntry
@@ -48,6 +51,13 @@ abstract class Table {
     var shownHand by mutableIntStateOf(0)
     var popups by mutableStateOf<List<Popup>>(emptyList())
     var emote by mutableStateOf<Pair<Int, String>?>(null)
+    /** The full tutor's queue of explanations; the game waits while one is showing. */
+    open val notes: List<Note> get() = emptyList()
+    open fun dismissNote() {}
+    val blocked: Boolean get() = notes.isNotEmpty()
+    /** The cards on the table when a hand's play ended, kept in view until the show is done. */
+    open val endPile: List<com.geoguy89.cribbage.game.Played>? get() = null
+    open val endCount: Int get() = 0
     /** The helper's look back at the last card laid (or the player's discard). */
     var review by mutableStateOf<com.geoguy89.cribbage.game.Tip?>(null)
     private var seenSeq = -1
@@ -73,7 +83,7 @@ abstract class Table {
     open fun ackShow() { state.lastShow?.let { shownHand = maxOf(shownHand, it.hand) } }
 
     fun toggle(card: Card) {
-        if (busy || !myTurn) return
+        if (busy || blocked || !myTurn) return
         selected = when {
             card in selected -> selected - card
             state.phase == Phase.DISCARD -> (selected + card).let { if (it.size > 2) it.drop(1).toSet() else it }
@@ -99,7 +109,10 @@ abstract class Table {
     fun dropPopup(id: Int) { popups = popups.filter { it.id != id } }
 }
 
-/** A solo game against the computer. Its moves come after short pauses so they can be followed. */
+/**
+ * A solo game against the computer. Its moves come after short pauses so they can be followed. With the full tutor
+ * on, every step queues a note, and nothing moves on until the player has read it.
+ */
 class LocalTable(
     private val scope: CoroutineScope,
     val difficulty: Difficulty,
@@ -108,7 +121,9 @@ class LocalTable(
     shown: Int,
     private val seed: Long,
     private val save: (GameState, Int, Long) -> Unit,
-    private val pace: Long = 1L,
+    /** Multiplies the computer's thinking time: 1 normal, more is slower. */
+    var pace: Float = 1.6f,
+    tutor: Boolean = false,
 ) : Table() {
     private val random = Random(seed)
     override var state by mutableStateOf(initial ?: Rules.newGame(random))
@@ -119,61 +134,97 @@ class LocalTable(
     override val handCounts: List<Int> get() = state.hands.map { it.size }
     override val cribCount: Int get() = state.crib.size
     private var ai: Job? = null
+    override var notes by mutableStateOf<List<Note>>(emptyList())
+        private set
+    override var endPile by mutableStateOf<List<com.geoguy89.cribbage.game.Played>?>(null)
+        private set
+    override var endCount by mutableIntStateOf(0)
+        private set
+
+    var tutor: Boolean = tutor
+        set(value) {
+            field = value
+            if (!value) { notes = emptyList(); drive() }
+        }
 
     init {
         shownHand = shown
         absorb(state)
+        if (tutor && state.hand == 1 && state.phase == Phase.DISCARD && state.hands[me].size == 6 && pendingShow == null) {
+            notes = listOf(Narrator.firstDeal(state, me, names))
+        }
+        drive()
+    }
+
+    private fun narrate(list: List<Note>) { if (tutor && list.isNotEmpty()) notes = notes + list }
+
+    override fun dismissNote() {
+        notes = notes.drop(1)
         drive()
     }
 
     private fun update(s: GameState) {
-        if (s.hand != state.hand) review = null
+        val before = state
+        if (s.hand != before.hand) review = null
         state = s
         absorb(s)
         save(s, shownHand, seed)
+        if (before.phase == Phase.DISCARD && s.phase == Phase.PEG && s.hand == before.hand) narrate(listOf(Narrator.cut(before, s, me, names)))
         drive()
     }
 
     override fun ackShow() {
         super.ackShow()
+        endPile = null
         save(state, shownHand, seed)
+        if (!state.over) narrate(listOf(Narrator.deal(state, me, names)))
         drive()
     }
 
     override fun discard(cards: List<Card>) {
-        if (state.phase != Phase.DISCARD || state.hands[me].size != 6) return
+        if (blocked || state.phase != Phase.DISCARD || state.hands[me].size != 6) return
         selected = emptySet()
         val six = state.hands[me]
+        val ownCrib = state.dealer == me
+        narrate(listOf(Narrator.discard(six, cards, ownCrib)))
         update(Rules.discard(state, me, cards))
-        review = com.geoguy89.cribbage.game.Coach.reviewDiscard(six, cards, state.dealer == me)
+        review = Coach.reviewDiscard(six, cards, ownCrib)
     }
 
     override fun play(card: Card) {
-        if (!myTurn || state.phase != Phase.PEG || card.value + state.count > 31) return
+        if (blocked || !myTurn || state.phase != Phase.PEG || card.value + state.count > 31) return
         selected = emptySet()
-        val before = state
-        update(Rules.play(state, me, card, random))
-        if (state.hand == before.hand) review = com.geoguy89.cribbage.game.Coach.reviewPlay(before, state, me, card, me, names)
+        laid(me, card)
     }
 
-    /** The computer's moves: wait for the player to finish looking at a show, then think briefly and act. */
+    /** Lays a card for [player], keeping the last cards of a hand on the table and explaining what happened. */
+    private fun laid(player: Int, card: Card) {
+        val before = state
+        val after = Rules.play(before, player, card, random)
+        if (after.hand != before.hand || after.over) {
+            endPile = before.pile + com.geoguy89.cribbage.game.Played(player, card)
+            endCount = before.count + card.value
+        }
+        narrate(Narrator.play(before, after, player, card, me, names))
+        update(after)
+        if (state.hand == before.hand) review = Coach.reviewPlay(before, state, player, card, me, names)
+    }
+
+    /** The computer's moves: wait for the player to read the tutor and look at the show, then think and act. */
     private fun drive() {
         ai?.cancel()
         val s = state
-        if (s.over || pendingShow != null) return
+        if (s.over || pendingShow != null || notes.isNotEmpty()) return
         val bot = opponent
         ai = scope.launch {
             when {
                 s.phase == Phase.DISCARD && s.hands[bot].size == 6 -> {
-                    delay(650 * pace)
+                    delay((700 * pace).toLong())
                     update(Rules.discard(state, bot, Ai.chooseDiscard(state.hands[bot], state.dealer == bot, difficulty, random)))
                 }
                 s.phase == Phase.PEG && s.turn == bot -> {
-                    delay((850 + random.nextInt(450)) * pace)
-                    val before = state
-                    val card = Ai.choosePlay(state, bot, difficulty, random)
-                    update(Rules.play(state, bot, card, random))
-                    if (state.hand == before.hand) review = com.geoguy89.cribbage.game.Coach.reviewPlay(before, state, bot, card, me, names)
+                    delay(((900 + random.nextInt(500)) * pace).toLong())
+                    laid(bot, Ai.choosePlay(state, bot, difficulty, random))
                 }
             }
         }
@@ -181,6 +232,7 @@ class LocalTable(
 
     override fun resign() {
         ai?.cancel()
+        notes = emptyList()
         update(Rules.resign(state, me))
     }
 

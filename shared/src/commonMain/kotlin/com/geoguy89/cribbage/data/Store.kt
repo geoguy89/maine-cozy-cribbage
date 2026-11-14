@@ -36,8 +36,10 @@ data class Settings(
     val music: Float = 0.45f,
     val sfx: Float = 0.8f,
     val difficulty: Difficulty = Difficulty.MEDIUM,
-    /** The tutorial helper's tips during solo games. */
-    val coach: Boolean = true,
+    /** How much the helper explains in solo games. */
+    val help: Help = Help.TUTOR,
+    /** How quickly the computer plays. */
+    val pace: Pace = Pace.RELAXED,
     val pegs: PegSet = PegSet.CLASSIC,
     val haptics: Boolean = true,
     /** Wildlife, fish and drifting particles. */
@@ -48,6 +50,17 @@ data class Settings(
     /** The opening walkthrough has been offered. */
     val welcomed: Boolean = false,
 )
+
+/** Off: no helper. Tips: advice and a Why? panel. Tutor: every step explained, and the game waits for you. */
+@Serializable
+enum class Help(val title: String, val blurb: String) {
+    OFF("Off", "Just play."),
+    TIPS("Tips", "Suggested plays with a Why? panel."),
+    TUTOR("Full tutor", "Explains every step, the arithmetic and the scoring, and waits for you to tap Continue."),
+}
+
+@Serializable
+enum class Pace(val title: String, val factor: Float) { RELAXED("Relaxed", 1.8f), NORMAL("Normal", 1f), QUICK("Quick", 0.5f) }
 
 @Serializable
 data class Stats(

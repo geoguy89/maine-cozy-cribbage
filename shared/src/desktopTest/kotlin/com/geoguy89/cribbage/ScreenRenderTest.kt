@@ -70,7 +70,7 @@ class ScreenRenderTest {
     }
 
     private fun table(m: AppModel, s: GameState, shown: Int = s.lastShow?.hand ?: 0) =
-        LocalTable(scope, Difficulty.MEDIUM, "Travis", s, shown, 1L, { _, _, _ -> }, pace = 1000L)
+        LocalTable(scope, Difficulty.MEDIUM, "Travis", s, shown, 1L, { _, _, _ -> }, pace = 1000f, tutor = m.settings.help == com.geoguy89.cribbage.data.Help.TUTOR)
 
     @Test
     fun titleScreens() {
@@ -98,6 +98,16 @@ class ScreenRenderTest {
         val m = model()
         m.openTable(table(m, midGame()))
         render("game_phone", 412, 900, m)
+    }
+
+    @Test
+    fun gameTutor() {
+        val m = model()
+        val s = midGame(12, cardsPlayed = 2)
+        val t = table(m, s)
+        m.openTable(t)
+        t.play(s.playable(0).first())
+        render("game_tutor", 412, 900, m)
     }
 
     @Test

@@ -205,7 +205,10 @@ fun SettingsScreen(model: AppModel) {
         SettingRow("Board", model.board.name) { WoodButton("Choose", { model.go(Screen.BOARDS) }, size = 13.sp) }
 
         Section("Play")
-        SettingRow("Tutorial helper", "Tips and suggested plays during solo games") { Toggle(s.coach, { v -> model.updateSettings { it.copy(coach = v) } }) }
+        SettingRow("Help while you play", s.help.blurb) {}
+        Chips(com.geoguy89.cribbage.data.Help.entries.map { it.title }, s.help.ordinal) { i -> model.updateSettings { it.copy(help = com.geoguy89.cribbage.data.Help.entries[i]) } }
+        SettingRow("Game speed", "How quickly the computer plays its cards") {}
+        Chips(com.geoguy89.cribbage.data.Pace.entries.map { it.title }, s.pace.ordinal) { i -> model.updateSettings { it.copy(pace = com.geoguy89.cribbage.data.Pace.entries[i]) } }
         SettingRow("Count the show for me", "Step through hand counts automatically") { Toggle(s.autoShow, { v -> model.updateSettings { it.copy(autoShow = v) } }) }
         SettingRow("Solo opponent") {}
         Chips(Difficulty.entries.map { it.title }, s.difficulty.ordinal) { i -> model.updateSettings { it.copy(difficulty = Difficulty.entries[i]) } }

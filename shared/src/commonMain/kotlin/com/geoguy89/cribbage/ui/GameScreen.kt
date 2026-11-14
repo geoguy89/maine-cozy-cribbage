@@ -138,14 +138,15 @@ fun GameScreen(model: AppModel, table: Table, posture: Posture) {
             else -> Column(Modifier.fillMaxSize().padding(horizontal = 8.dp, vertical = 6.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                 ScoreBar(model, table, display) { sheet = Sheet.MENU }
                 Spacer(Modifier.height(6.dp))
-                Box(Modifier.fillMaxWidth().heightIn(max = mh * 0.42f), contentAlignment = Alignment.Center) { board(Modifier) }
+                Box(Modifier.fillMaxWidth().heightIn(max = mh * (if (table.notes.isNotEmpty()) 0.27f else 0.42f)), contentAlignment = Alignment.Center) { board(Modifier) }
                 PlayColumn(model, table, compact = true, onSheet = { sheet = it })
             }
         }
 
         if (zoom) BoardZoom(model, boardScores, boardPrev) { zoom = false }
         // The show, then the end of the game, over everything else.
-        if (show != null) ShowOverlay(model, table, show, step, onStep = { step = it }, onDone = { table.ackShow(); model.sound(Sfx.DEAL) })
+        // The show waits until the tutor has finished explaining the end of the play.
+        if (show != null && table.notes.isEmpty()) ShowOverlay(model, table, show, step, onStep = { step = it }, onDone = { table.ackShow(); model.sound(Sfx.DEAL) })
         else if (state.over) GameOverOverlay(model, table)
         when (sheet) {
             Sheet.LOG -> LogSheet(table) { sheet = null }
@@ -213,11 +214,15 @@ private fun SpeechBubble(text: String) {
 @Composable
 private fun ColumnScope.PlayColumn(model: AppModel, table: Table, compact: Boolean, onSheet: (Sheet) -> Unit, showOpponent: Boolean = true, showTable: Boolean = true) {
     val s = table.state
-    val coachOn = model.settings.coach && !table.online
+    val help = model.settings.help
+    val coachOn = help != com.geoguy89.cribbage.data.Help.OFF && !table.online
     val tip = remember(s.seq, s.hand, s.phase, s.hands[table.me].size, coachOn) { if (coachOn) Coach.tip(s, table.me) else null }
+    val note = table.notes.firstOrNull()
     if (showOpponent) OpponentRow(table)
-    if (showTable) PlayArea(model, table, Modifier.fillMaxWidth().weight(1f).heightIn(min = 96.dp)) else Spacer(Modifier.weight(1f))
-    if (tip != null) {
+    if (showTable) PlayArea(model, table, Modifier.fillMaxWidth().weight(1f).heightIn(min = 118.dp)) else Spacer(Modifier.weight(1f))
+    if (note != null) {
+        TutorCard(note, table.notes.size - 1, compact) { table.dismissNote(); model.sound(Sfx.CLICK, 0.5f) }
+    } else if (tip != null) {
         var why by remember { mutableStateOf(false) }
         Parchment(Modifier.fillMaxWidth().padding(vertical = 4.dp), pins = !compact) {
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -226,11 +231,10 @@ private fun ColumnScope.PlayColumn(model: AppModel, table: Table, compact: Boole
                     Hand(if (why) "Hide ▴" else "Why? ▾", size = 15.sp, weight = FontWeight.Bold, color = Color(0xFF8A3A20))
                 }
             }
-            val review = table.review
+            val review = table.review?.takeIf { help == com.geoguy89.cribbage.data.Help.TIPS }
             if (review != null) Hand("Last: " + review.text, size = if (compact) 13.sp else 15.sp, color = Color(0xFF5A3A1E))
             Hand(tip.text.removeSuffix(" Tap Why? for the reasoning."), size = if (compact) 14.sp else 16.sp, weight = FontWeight.Medium)
             if (why) Column(Modifier.heightIn(max = 260.dp).verticalScrollCompat().padding(top = 6.dp)) {
-                Hand(Coach.VALUES, Modifier.padding(vertical = 2.dp), size = 14.sp, color = Color(0xFF8A3A20), weight = FontWeight.Bold)
                 if (review != null) {
                     Hand(review.title, Modifier.padding(top = 6.dp), size = 15.sp, weight = FontWeight.Bold)
                     for (line in review.why) Hand(line, Modifier.padding(vertical = 2.dp), size = 14.sp, color = Color(0xFF2E2014))
@@ -266,14 +270,16 @@ private fun PlayArea(model: AppModel, table: Table, modifier: Modifier) {
                 Box(Modifier.width(cardW * 0.8f).height(cardH * 0.8f)) {
                     CardBack(Modifier.height(cardH * 0.8f).offset(2.dp, 2.dp), ui.look.base.cardBack)
                     CardBack(Modifier.height(cardH * 0.8f), ui.look.base.cardBack)
-                    s.starter?.let { st -> key(st.id, s.hand) { FlipIn { CardFace(st, Modifier.height(cardH * 0.8f)) } } }
+                    val starter = table.pendingShow?.starter ?: s.starter
+                    starter?.let { st -> key(st.id, table.pendingShow?.hand ?: s.hand) { FlipIn { CardFace(st, Modifier.height(cardH * 0.8f)) } } }
                 }
-                Txt(if (s.starter != null) "Starter" else "Deck", size = 11.sp, color = ui.onTable, shadow = true)
+                Txt(if (s.starter != null || table.pendingShow != null) "Starter" else "Deck", size = 11.sp, color = ui.onTable, shadow = true)
             }
             Spacer(Modifier.width(10.dp))
             // The pile in play.
             Box(Modifier.weight(1f).fillMaxHeight(), contentAlignment = Alignment.CenterStart) {
-                val pile = s.pile
+                val ended = table.endPile?.takeIf { table.pendingShow != null }
+                val pile = ended ?: s.pile
                 val step = if (pile.size <= 1) 0.dp else minOf(cardW * 0.55f, (areaW - cardW * 2.6f) / (pile.size - 1).coerceAtLeast(1))
                 pile.forEachIndexed { i, p ->
                     key(p.card.id, s.hand) {
@@ -282,8 +288,9 @@ private fun PlayArea(model: AppModel, table: Table, modifier: Modifier) {
                         }
                     }
                 }
-                if (s.phase == Phase.PEG) CountBadge(s.count, Modifier.align(Alignment.TopEnd))
-                if (s.phase == Phase.DISCARD) {
+                if (ended != null) CountBadge(table.endCount, Modifier.align(Alignment.TopEnd))
+                else if (s.phase == Phase.PEG) CountBadge(s.count, Modifier.align(Alignment.TopEnd))
+                if (s.phase == Phase.DISCARD && ended == null) {
                     Hand(if (s.hands[table.me].size == 6) "Pick two cards for ${if (s.dealer == table.me) "your" else "their"} crib." else "Waiting for ${table.names[table.opponent]} to throw...", Modifier.padding(8.dp), size = 16.sp, color = ui.onTable)
                 }
                 Popups(table, Modifier.fillMaxSize())
@@ -360,7 +367,7 @@ private fun Popups(table: Table, modifier: Modifier) {
 @Composable
 private fun HandRow(model: AppModel, table: Table, modifier: Modifier) {
     val s = table.state
-    val hand = s.hands[table.me]
+    val hand = if (table.pendingShow != null) emptyList() else s.hands[table.me]
     val ui = LocalUi.current
     BoxWithConstraints(modifier.height(140.dp), contentAlignment = Alignment.BottomCenter) {
         val handW = maxWidth
@@ -394,13 +401,14 @@ private fun HandRow(model: AppModel, table: Table, modifier: Modifier) {
                         },
                 ) {
                     CardFace(card, Modifier.height(cardH), dim = s.phase == Phase.PEG && table.myTurn && !playable, glow = if (sel) ui.accent else null)
-                    if (model.settings.coach && !table.online) Box(Modifier.align(Alignment.BottomCenter).padding(bottom = 6.dp).drawBehind {
+                    if (model.settings.help != com.geoguy89.cribbage.data.Help.OFF && !table.online) Box(Modifier.align(Alignment.BottomCenter).padding(bottom = 6.dp).drawBehind {
                         drawRoundRect(Color(0xFF3B2414).copy(alpha = 0.85f), cornerRadius = CornerRadius(8.dp.toPx()))
                     }.padding(horizontal = 7.dp, vertical = 1.dp)) { Txt("${card.value}", size = 12.sp, color = Color.White, weight = FontWeight.Bold) }
                 }
             }
         }
-        if (hand.isEmpty() && s.phase == Phase.PEG) Hand("All your cards are on the table.", Modifier.padding(bottom = 30.dp), size = 16.sp, color = ui.onTable)
+        if (table.pendingShow != null) Hand("Next: counting the hands.", Modifier.padding(bottom = 30.dp), size = 16.sp, color = ui.onTable)
+        else if (hand.isEmpty() && s.phase == Phase.PEG) Hand("All your cards are on the table.", Modifier.padding(bottom = 30.dp), size = 16.sp, color = ui.onTable)
     }
 }
 
@@ -410,6 +418,7 @@ private fun ActionRow(model: AppModel, table: Table, hint: List<Card>, onSheet: 
     val sel = table.selected.toList()
     val (label, enabled, action) = when {
         s.over -> Triple("Game over", false) {}
+        table.blocked -> Triple("Read the note", false) {}
         !table.myTurn -> Triple(if (table.busy) "Sending..." else "${table.names[table.opponent].take(12)}'s turn", false) {}
         s.phase == Phase.DISCARD -> if (sel.size == 2) Triple("Throw to crib", true) { table.discard(sel) } else Triple(if (sel.isEmpty()) "Pick 2 cards" else "Pick 1 more", false) {}
         else -> sel.firstOrNull()?.let { c -> Triple("Play ${c.short}", c.value + s.count <= 31) { table.play(c) } } ?: Triple("Pick a card", false) {}
@@ -447,7 +456,8 @@ private fun Lantern() {
 private fun ShowOverlay(model: AppModel, table: Table, show: Show, step: ShowStep, onStep: (ShowStep) -> Unit, onDone: () -> Unit) {
     val ui = LocalUi.current
     val count = show.counts.getOrNull(step.count)
-    val auto = model.settings.autoShow
+    val tutor = model.settings.help == com.geoguy89.cribbage.data.Help.TUTOR && !table.online
+    val auto = model.settings.autoShow && !tutor
     fun next() {
         val c = show.counts.getOrNull(step.count) ?: return onDone()
         when {
@@ -487,12 +497,21 @@ private fun ShowOverlay(model: AppModel, table: Table, show: Show, step: ShowSte
             val chant = if (shown.isEmpty()) (if (count.score.items.isEmpty()) "Nineteen! Nothing to count." else "Let's count it...")
                 else com.geoguy89.cribbage.game.HandScore(shown).chant
             Hand(chant, size = 18.sp)
+            if (tutor) {
+                val last = shown.lastOrNull()
+                Hand(if (last == null) com.geoguy89.cribbage.game.Narrator.showIntro(count, show.starter, table.me, table.names)
+                    else com.geoguy89.cribbage.game.Narrator.explain(last, show.starter, count.crib),
+                    Modifier.padding(top = 6.dp), size = 16.sp, color = Color(0xFF2F4F2F), weight = FontWeight.Medium)
+                if (step.items >= count.score.items.size && count.score.items.isNotEmpty()) {
+                    Hand("Total: ${count.score.items.joinToString(" + ") { it.points.toString() }} = ${count.score.total} points for ${if (count.player == table.me) "you" else table.names[count.player]}.", Modifier.padding(top = 4.dp), size = 16.sp, weight = FontWeight.Bold)
+                }
+            }
             Spacer(Modifier.height(6.dp))
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Carved("$running", 30.sp)
                 Txt(if (step.items >= count.score.items.size) "  points" else "  so far", size = 14.sp)
                 Spacer(Modifier.weight(1f))
-                if (!auto) WoodButton("Count it all", {
+                if (!auto && !tutor) WoodButton("Count it all", {
                     onStep(ShowStep(show.counts.size - 1, show.counts.last().score.items.size))
                 }, size = 13.sp)
             }
@@ -646,5 +665,20 @@ private fun BoardZoom(model: AppModel, scores: List<Int>, prev: List<Int>, onClo
             BoardView(model.board, scores, prev, Modifier, pegs = model.settings.pegs, ambient = model.settings.ambient)
         }
         Txt("Tap to close", Modifier.align(Alignment.BottomCenter).padding(bottom = 12.dp), size = 14.sp, color = ui.onTable, shadow = true)
+    }
+}
+
+/** The full tutor's note: what just happened, explained, with Continue to move on. */
+@Composable
+private fun TutorCard(note: com.geoguy89.cribbage.game.Note, more: Int, compact: Boolean, onContinue: () -> Unit) {
+    Parchment(Modifier.fillMaxWidth().padding(vertical = 4.dp), pins = !compact) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Hand("tutor · " + note.title, Modifier.weight(1f), size = 17.sp, weight = FontWeight.Bold, color = Color(0xFF6B3A1E))
+            if (more > 0) Hand("$more more", size = 13.sp, color = Color(0xFF8A6A4A))
+        }
+        Column(Modifier.heightIn(max = if (compact) 150.dp else 320.dp).verticalScrollCompat().padding(vertical = 4.dp)) {
+            for (line in note.lines) Hand(line, Modifier.padding(vertical = 2.dp), size = if (compact) 15.sp else 16.sp, color = Color(0xFF2E2014))
+        }
+        WoodButton("Continue ▸", onContinue, Modifier.fillMaxWidth(), primary = true, size = 15.sp)
     }
 }
