@@ -13,8 +13,9 @@ android {
         minSdk = 26
         targetSdk = 35
         // CI sets this to the run number, so every release installs over the last (the update check relies on it too).
-        versionCode = System.getenv("CRIBBAGE_BUILD_NUMBER")?.toIntOrNull() ?: 1
-        versionName = "1.0.0"
+        val build = System.getenv("CRIBBAGE_BUILD_NUMBER")?.toIntOrNull()
+        versionCode = build ?: 1
+        versionName = if (build != null) "1.0.$build" else "1.0.0-dev"
     }
 
     // One permanent key, so each release installs over the last. CI supplies it from repository secrets; local
