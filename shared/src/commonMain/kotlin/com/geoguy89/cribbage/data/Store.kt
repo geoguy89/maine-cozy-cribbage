@@ -49,6 +49,10 @@ data class Settings(
     val notifications: Boolean = true,
     /** The opening walkthrough has been offered. */
     val welcomed: Boolean = false,
+    /** With the helper on, the computer waits for Continue before each card it lays. */
+    val stepByStep: Boolean = true,
+    /** Move your own peg (tap the hole) for points scored in the play. */
+    val selfPeg: Boolean = false,
 )
 
 /** Off: no helper. Tips: advice and a Why? panel. Tutor: every step explained, and the game waits for you. */

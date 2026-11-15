@@ -38,17 +38,25 @@ finds newer releases itself and offers **Update now** on its title screen.
 | ![Rangeley Lake](docs/boards/rangeley.png) **Rangeley Lake** · three streets under Saddleback | ![Sebago Lake](docs/boards/sebago.png) **Sebago Lake** · the track follows the shoreline |
 | ![Bar Harbor](docs/boards/barharbor.png) **Bar Harbor** · Mount Desert Island in a poured sea | ![Katahdin](docs/boards/katahdin.png) **Katahdin** · switchbacks to the summit |
 | ![Camden Harbor](docs/boards/camden.png) **Camden Harbor** · rolling waves and windjammers | ![Allagash](docs/boards/allagash.png) **Allagash Wilderness** · one bank each down the river |
+| ![Pemaquid Point](docs/boards/pemaquid.png) **Pemaquid Point** · eight-sided, spiralling in to the light | ![Stonington](docs/boards/stonington.png) **Stonington** · four streets under the granite islands |
+| ![Belgrade Lakes](docs/boards/belgrade.png) **Belgrade Lakes** · six-sided, two laps round a loon pond at dusk | ![West Quoddy Head](docs/boards/quoddy.png) **West Quoddy Head** · a horseshoe round the candy-striped light |
+| ![Old Orchard Beach](docs/boards/oob.png) **Old Orchard Beach** · two laps round the Ferris wheel on the Pier | ![Machias](docs/boards/machias.png) **Machias** · a blueberry-blue spiral in to a handful of wild blueberries |
+| ![Dirigo](docs/boards/dirigo.png) **Dirigo** · the whole state in spruce green under the North Star | |
 
 All of these are rendered by the game's own code (`./gradlew :shared:desktopTest` writes them to `shared/build/screenshots`).
 
 ## What's in it
 
-* **Ten boards, all Maine lakes and towns**: Sebec Lake, Moosehead Lake, Schoodic Lake (in a brook trout), Eastport
+* **Seventeen boards, all Maine lakes and towns**: Sebec Lake, Moosehead Lake, Schoodic Lake (in a brook trout), Eastport
   (round and teal, after a real hand-made board), Rangeley Lake (three streets), Sebago Lake (the track follows its
   shoreline), Bar Harbor (Mount Desert Island raised out of a poured sea), Katahdin (switchbacks up the mountain),
-  Camden Harbor (rolling waves and windjammers) and the Allagash (one bank each). Lake and island shapes are the real
-  ones, from OpenStreetMap. Fish jump in the lakes; pegs leapfrog hole to hole.
-* **Built for beginners:** a guide strip shows the step you're on (Crib, Play, Count), whose turn it is and what to do; cards that would score are marked **+N**; a scoring cheat sheet shows every score with real cards; a first-launch welcome offers lessons or a guided game.
+  Camden Harbor (rolling waves and windjammers), the Allagash (one bank each), Pemaquid Point (a spiral in to the
+  lighthouse), Stonington (four streets), Belgrade Lakes (a six-sided board, two laps round a loon pond), West
+  Quoddy Head (a horseshoe round the candy-striped light), Old Orchard Beach (round the Ferris wheel), Machias (wild
+  blueberries) and Dirigo (the whole state under the North Star). Lake and island shapes are the real
+  ones, from OpenStreetMap. Fish jump in the lakes; pegs hop hole to hole, the holes
+  just pegged glow, and thrown cards sail across to the crib.
+* **Built for beginners:** a guide strip shows the step you're on (Crib, Play, Count), whose turn it is and what to do; cards that would score are marked **+N**; every card on the table carries the running count in the colour of whoever laid it; a ring fills towards 31; choosing crib cards tells you what the four you keep already score; a scoring cheat sheet shows every score with real cards; a first-launch welcome offers lessons or a guided game. With the helper on the game goes **one step at a time**: the computer holds its card until you tap Continue, so nothing changes while you're reading. Turn on **Peg it yourself** and you move your own peg (tap the glowing hole) whenever you score in the play.
 * **Solo play** against three opponents: Summer Visitor, Camp Regular and Old-Timer (which weighs every starter and
   minds the crib).
 * **Learn to play**: eight hands-on lessons (find the fifteens, count hands, choose discards, peg) plus endless
@@ -56,13 +64,14 @@ All of these are rendered by the game's own code (`./gradlew :shared:desktopTest
 * **Friends and multiplayer**, built like Refiner's Fire: a friend code for each player, friend requests, invitations,
   win/loss and skunk records, and table talk. The server deals and keeps every hand hidden; games carry on turn by
   turn, live when you're both in. A background check posts "your turn" notifications.
-* **Five table themes** (Pine Tavern, Flannel Cabin, Birch Morning, Harbor Fog, Loon Night) and **seasons and
+* **Nine table themes** (Pine Tavern, Flannel Cabin, Birch Morning, Harbor Fog, Loon Night, Acadia Sunrise, Blueberry Barrens, Lobster Shack, Grange Hall; stars twinkle, gulls glide, the harbor light turns) and **seasons and
   holidays that change on their own**: snow, mud season, fireflies, foliage, New Year, Valentine's, Maine Day & St.
   Patrick's, Maine Maple Sunday, Easter, the Fourth, blueberry season, Halloween, Thanksgiving and Christmas. Turn it
   off or pick one in Settings.
 * **Soft music** (three synthesised waltzes, with a holiday version) and sounds, each with its own volume.
-* **Foldables**: folded it's a phone layout; unfolded, board and hand sit side by side (split at the hinge in book
-  posture); half-folded on a table, the board sits on top and your hand below.
+* **Foldables**: folded it's a phone layout that always fits the hand and the buttons; unfolded, a round board sits
+  beside your hand and a long board runs the full width across the top; half-folded on a table, the board sits on
+  top and your hand below. Tap the board any time to see it full-screen.
 
 Every picture in the game (boards, cards, scenery, icons) is drawn in code; there are no image files.
 

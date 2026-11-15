@@ -8,6 +8,14 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawBehind
@@ -36,6 +44,11 @@ fun guideFor(table: Table, help: Help): GuideInfo? {
     val s = table.state
     if (s.over) return null
     val opp = table.names[table.opponent]
+    table.pegOwed?.let { to ->
+        val n = to - table.pegAt
+        return GuideInfo(1, "You scored $n! Now peg it: tap the glowing hole on the board, $n ${if (n == 1) "hole" else "holes"} past your front peg. Your back peg jumps over to it.", true)
+    }
+    if (table.waiting) return GuideInfo(if (s.phase == Phase.PEG) 1 else 0, "Take your time. When you're ready, tap Continue and $opp will play a card.", true)
     if (table.pendingShow != null) {
         return GuideInfo(2, "The play is over. Now the hands are counted: the non-dealer's first, then the dealer's, then the crib.", false)
     }
@@ -46,7 +59,14 @@ fun guideFor(table: Table, help: Help): GuideInfo? {
                 GuideInfo(0, when (table.selected.size) {
                     0 -> "Tap 2 cards to put in $crib, then press Throw to crib. The other 4 are your hand."
                     1 -> "One more card for $crib."
-                    else -> "Press Throw to crib. (Tap a card again to change your mind.)"
+                    else -> {
+                        // What the four kept cards are already worth, before the starter is turned.
+                        val kept = s.hands[table.me] - table.selected
+                        val score = Scoring.score(kept, null)
+                        val worth = if (help == Help.OFF) "" else if (score.total == 0) " The 4 you keep score nothing yet; the starter may help."
+                            else " The 4 you keep already score ${score.total} (${score.items.groupBy { it.label }.map { (l, v) -> if (v.size > 1) "${v.size} × ${l.lowercase()}" else l.lowercase() }.joinToString(", ")})."
+                        "Press Throw to crib, or tap a card to change your mind.$worth"
+                    }
                 }, true)
             } else GuideInfo(0, "Waiting for $opp to choose their crib cards…", false)
         Phase.PEG ->
@@ -82,7 +102,10 @@ fun GuideBar(table: Table, help: Help, compact: Boolean, modifier: Modifier = Mo
                 }
             }
             Spacer(Modifier.weight(1f))
-            Column(Modifier.drawBehind {
+            val beat by rememberInfiniteTransition().animateFloat(0f, 1f, infiniteRepeatable(tween(900), RepeatMode.Reverse))
+            Column(Modifier.graphicsLayer { if (g.yourTurn) { val k = 1f + 0.07f * beat; scaleX = k; scaleY = k } }.drawBehind {
+                if (g.yourTurn) drawRoundRect(Color(0xFF7CFC6A).copy(alpha = 0.35f * beat), Offset(-3.dp.toPx(), -3.dp.toPx()),
+                    androidx.compose.ui.geometry.Size(size.width + 6.dp.toPx(), size.height + 6.dp.toPx()), CornerRadius(13.dp.toPx()))
                 drawRoundRect(if (g.yourTurn) Color(0xFF3E8E3E) else Color(0x33000000), cornerRadius = CornerRadius(10.dp.toPx()))
             }.padding(horizontal = 9.dp, vertical = 2.dp)) {
                 Txt(if (g.yourTurn) "YOUR TURN" else "WAIT", size = 11.sp, color = if (g.yourTurn) Color.White else ui.ink.copy(alpha = 0.7f), weight = FontWeight.Bold, maxLines = 1)

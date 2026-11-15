@@ -52,6 +52,8 @@ class BoardPainter(
     val design: BoardDesign,
     /** Pixels per board unit. */
     val k: Float,
+    /** When given, lettering is collected here to be drawn later (on the main thread) instead of straight away. */
+    private val later: MutableList<DrawScope.() -> Unit>? = null,
 ) : DrawScope by scope {
     val wood: Wood get() = design.wood
     val W = 100f
@@ -77,14 +79,17 @@ class BoardPainter(
         val kk = k
         val layout = measurer.measure(text, style(size, face, ink, weight, spacing))
         val shine = if (carved) measurer.measure(text, style(size, face, wood.highlight().copy(alpha = 0.55f), weight, spacing)) else null
-        withTransform({ scale(1f / kk, 1f / kk, Offset.Zero) }) {
-            val c = at * kk
-            withTransform({ rotate(rotation, c) }) {
-                val tl = c - Offset(layout.size.width / 2f, layout.size.height / 2f)
-                if (shine != null) drawText(shine, topLeft = tl + Offset(0.6f, 0.9f) * (kk / 4f))
-                drawText(layout, topLeft = tl)
+        val paint: DrawScope.() -> Unit = {
+            withTransform({ scale(1f / kk, 1f / kk, Offset.Zero) }) {
+                val c = at * kk
+                withTransform({ rotate(rotation, c) }) {
+                    val tl = c - Offset(layout.size.width / 2f, layout.size.height / 2f)
+                    if (shine != null) drawText(shine, topLeft = tl + Offset(0.6f, 0.9f) * (kk / 4f))
+                    drawText(layout, topLeft = tl)
+                }
             }
         }
+        if (later != null) later += paint else paint()
     }
 
     /** Text bent round a circle centred on [c], starting at [startDeg] (0 = east, clockwise), reading clockwise or not. */
@@ -239,19 +244,43 @@ class BoardPainter(
     }
 }
 
-/** Renders the static layer of [design] at [px] wide into an image. */
-fun renderBoard(design: BoardDesign, px: Int, measurer: TextMeasurer, fonts: BoardFonts, density: androidx.compose.ui.unit.Density): Pair<ImageBitmap, List<WaterArea>> {
+/**
+ * A board painted except for its lettering. Android's text drawing goes through one shared canvas wrapper, so text
+ * drawn on a background thread can end up in whatever the UI is drawing at that moment (and the other way round).
+ * The wood, water and holes are painted off the main thread; [letter] then adds the words on it.
+ */
+class BoardBase(
+    private val image: ImageBitmap, val waters: List<WaterArea>, private val k: Float,
+    private val density: androidx.compose.ui.unit.Density, private val texts: List<DrawScope.() -> Unit>,
+) {
+    fun letter(): ImageBitmap {
+        val canvas = androidx.compose.ui.graphics.Canvas(image)
+        androidx.compose.ui.graphics.drawscope.CanvasDrawScope().draw(density, androidx.compose.ui.unit.LayoutDirection.Ltr, canvas, Size(image.width.toFloat(), image.height.toFloat())) {
+            withTransform({ scale(k, k, Offset.Zero) }) { for (t in texts) t() }
+        }
+        return image
+    }
+}
+
+fun renderBoardBase(design: BoardDesign, px: Int, measurer: TextMeasurer, fonts: BoardFonts, density: androidx.compose.ui.unit.Density): BoardBase {
     val h = (px * design.height / 100f).toInt().coerceAtLeast(1)
     val image = ImageBitmap(px, h)
     val canvas = androidx.compose.ui.graphics.Canvas(image)
     val k = px / 100f
     var waters: List<WaterArea> = emptyList()
+    val texts = mutableListOf<DrawScope.() -> Unit>()
     androidx.compose.ui.graphics.drawscope.CanvasDrawScope().draw(density, androidx.compose.ui.unit.LayoutDirection.Ltr, canvas, Size(px.toFloat(), h.toFloat())) {
         withTransform({ scale(k, k, Offset.Zero) }) {
-            val p = BoardPainter(this, measurer, fonts, design, k)
+            val p = BoardPainter(this, measurer, fonts, design, k, texts)
             p.paintStatic()
             waters = p.waters
         }
     }
-    return image to waters
+    return BoardBase(image, waters, k, density, texts)
+}
+
+/** Renders the static layer of [design] at [px] wide into an image, all in one go. */
+fun renderBoard(design: BoardDesign, px: Int, measurer: TextMeasurer, fonts: BoardFonts, density: androidx.compose.ui.unit.Density): Pair<ImageBitmap, List<WaterArea>> {
+    val base = renderBoardBase(design, px, measurer, fonts, density)
+    return base.letter() to base.waters
 }

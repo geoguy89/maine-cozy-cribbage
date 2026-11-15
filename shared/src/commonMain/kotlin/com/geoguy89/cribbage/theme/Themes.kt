@@ -10,7 +10,7 @@ import kotlinx.datetime.minus
 import kotlinx.datetime.plus
 
 /** How the table behind everything is drawn. */
-enum class Backdrop { PLANKS, PLAID, BIRCH, HARBOR, NIGHT }
+enum class Backdrop { PLANKS, PLAID, BIRCH, HARBOR, NIGHT, SUNRISE, BARRENS, CLAPBOARD, FELT }
 
 /** The look of the room: the table, the signs and the paper. */
 enum class BaseTheme(
@@ -38,6 +38,14 @@ enum class BaseTheme(
         Color(0xFFEEEAE0), Color(0xFF26313A), Color(0xFF2E7D8C), Color(0xFF51677A), Color(0xFF26384A), Color(0xFF1F3B57)),
     LOON_NIGHT("Loon Night", "A clear night on the lake, northern lights over the ridge.", Backdrop.NIGHT, Wood.WALNUT, Wood.TEAK,
         Color(0xFFF0E6CF), Color(0xFF2B1D10), Color(0xFF6FD3A8), Color(0xFF0D1B33), Color(0xFF02060F), Color(0xFF16324F)),
+    ACADIA_SUNRISE("Acadia Sunrise", "First light from Cadillac Mountain, the Porcupine Islands below.", Backdrop.SUNRISE, Wood.CHERRY, Wood.MAPLE,
+        Color(0xFFF6EAD0), Color(0xFF3A2414), Color(0xFFD9603B), Color(0xFF2A2750), Color(0xFFEE8A4E), Color(0xFF7A2E22)),
+    BLUEBERRY_BARRENS("Blueberry Barrens", "The barrens Down East in October, gone crimson to the horizon.", Backdrop.BARRENS, Wood.WALNUT, Wood.ASH,
+        Color(0xFFF4E8D2), Color(0xFF2E1A1A), Color(0xFF5A6BC0), Color(0xFF8A2433), Color(0xFF3A1422), Color(0xFF2C3A7A)),
+    LOBSTER_SHACK("Lobster Shack", "White clapboards, and a row of buoys hung on the wall.", Backdrop.CLAPBOARD, Wood.DRIFTWOOD, Wood.DRIFTWOOD,
+        Color(0xFFFFF8E8), Color(0xFF26313A), Color(0xFFC0392B), Color(0xFFF1EEE6), Color(0xFFCFCBC0), Color(0xFFB5322A)),
+    GRANGE_HALL("Grange Hall", "Green felt on the card table at the Grange supper.", Backdrop.FELT, Wood.WALNUT, Wood.MAPLE,
+        Color(0xFFF3E6C8), Color(0xFF3A2414), Color(0xFFC9A13B), Color(0xFF226140), Color(0xFF10361F), Color(0xFF7A2E22)),
 }
 
 /** Things that drift across the screen. */

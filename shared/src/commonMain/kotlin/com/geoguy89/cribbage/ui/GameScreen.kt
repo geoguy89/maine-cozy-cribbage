@@ -5,6 +5,11 @@ import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.animateIntAsState
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
@@ -86,9 +91,17 @@ fun GameScreen(model: AppModel, table: Table, posture: Posture) {
     val display = show?.let { scoresAt(it, step) } ?: state.scores
     val pegColors = model.settings.pegs.colors
     // Seat 0's pegs are always the first colour, so both players see the same board.
-    val boardScores = display
+    // Peg it yourself: the player's peg stays where it is until they move it.
+    val pegOwed = table.pegOwed
+    val boardScores = if (pegOwed != null) display.toMutableList().also { it[table.me] = table.pegAt } else display
     val boardPrev = if (show != null) show.startScores else state.prevScores
+    val pegTarget = pegOwed?.let { table.me to it }
+    val onPegTap: (Boolean) -> Unit = { hit ->
+        if (hit) { table.pegMoved(); model.haptic(Haptic.CONFIRM) }
+        else table.message = "Tap the glowing hole: ${(pegOwed ?: 0) - table.pegAt} past your front peg."
+    }
 
+    LaunchedEffect(table, model.settings.selfPeg) { table.selfPeg = model.settings.selfPeg }
     LaunchedEffect(state.played.size) { if (state.played.isNotEmpty()) model.sound(Sfx.CARD, 0.8f) }
     LaunchedEffect(state.hand) { model.sound(Sfx.SHUFFLE, 0.6f) }
     LaunchedEffect(show?.hand) { if (show != null) model.recordShow(table) }
@@ -101,9 +114,32 @@ fun GameScreen(model: AppModel, table: Table, posture: Posture) {
         val wide = posture.bookHingeX != null || (mw >= 600.dp && mw > mh * 0.8f)
         val tabletop = posture.tabletopHingeY != null
         val board: @Composable (Modifier) -> Unit = { m ->
-            BoardView(model.board, boardScores, boardPrev, m.clickable { zoom = true }, pegs = model.settings.pegs, ambient = model.settings.ambient, onPegLanded = { model.sound(Sfx.PEG, 0.9f) })
+            BoardView(model.board, boardScores, boardPrev, m, pegs = model.settings.pegs, ambient = model.settings.ambient, onPegLanded = { model.sound(Sfx.PEG, 0.9f) },
+                onTap = { zoom = true }, pegTarget = pegTarget, onPegTap = onPegTap)
         }
+        // Unfolded, a long board gets the full width of the screen across the top; a round one sits beside the cards.
+        val band = wide && !tabletop && model.board.aspect >= 1.3f
+        // A short phone screen: everything has to fit, so the extras tuck away.
+        val short = mh < 780.dp
         when {
+            band -> Column(Modifier.fillMaxSize().padding(10.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                val split = posture.bookHingeX?.dp ?: (mw * 0.5f)
+                ScoreBar(model, table, display) { sheet = Sheet.MENU }
+                Spacer(Modifier.height(6.dp))
+                Box(Modifier.fillMaxWidth().heightIn(max = mh * 0.45f), contentAlignment = Alignment.Center) { board(Modifier) }
+                Spacer(Modifier.height(6.dp))
+                Row(Modifier.fillMaxWidth().weight(1f)) {
+                    Column(Modifier.width(split - 10.dp).fillMaxHeight().padding(end = 8.dp)) {
+                        if (table.notes.isEmpty()) GuideBar(table, model.settings.help, true)
+                        OpponentRow(table)
+                        PlayArea(model, table, Modifier.fillMaxWidth().weight(1f))
+                    }
+                    Spacer(Modifier.width(posture.hingeThickness.dp))
+                    Column(Modifier.weight(1f).fillMaxHeight().padding(start = 8.dp)) {
+                        PlayColumn(model, table, compact = true, onSheet = { sheet = it }, showOpponent = false, showTable = false, tabs = false, guide = false)
+                    }
+                }
+            }
             tabletop -> Column(Modifier.fillMaxSize()) {
                 Column(Modifier.fillMaxWidth().height(posture.tabletopHingeY!!.dp).padding(8.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                     ScoreBar(model, table, display) { sheet = Sheet.MENU }
@@ -136,14 +172,17 @@ fun GameScreen(model: AppModel, table: Table, posture: Posture) {
                 }
             }
             else -> Column(Modifier.fillMaxSize().padding(horizontal = 8.dp, vertical = 6.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                ScoreBar(model, table, display) { sheet = Sheet.MENU }
-                Spacer(Modifier.height(6.dp))
-                Box(Modifier.fillMaxWidth().heightIn(max = mh * (if (table.notes.isNotEmpty()) 0.27f else 0.42f)), contentAlignment = Alignment.Center) { board(Modifier) }
-                PlayColumn(model, table, compact = true, onSheet = { sheet = it })
+                ScoreBar(model, table, display, compact = true) { sheet = Sheet.MENU }
+                Spacer(Modifier.height(4.dp))
+                // The board takes whatever height the rest leaves, so the hand and the buttons are never pushed off.
+                Box(Modifier.fillMaxWidth().weight(1f), contentAlignment = Alignment.Center) { board(Modifier) }
+                Spacer(Modifier.height(4.dp))
+                PlayColumn(model, table, compact = true, onSheet = { sheet = it }, showOpponent = false, tabs = !short,
+                    tableHeight = (mh * 0.15f).coerceIn(92.dp, 132.dp), short = short)
             }
         }
 
-        if (zoom) BoardZoom(model, boardScores, boardPrev) { zoom = false }
+        if (zoom) BoardZoom(model, boardScores, boardPrev, pegTarget, onPegTap) { zoom = false }
         // The show, then the end of the game, over everything else.
         // The show waits until the tutor has finished explaining the end of the play.
         if (show != null && table.notes.isEmpty()) ShowOverlay(model, table, show, step, onStep = { step = it }, onDone = { table.ackShow(); model.sound(Sfx.DEAL) })
@@ -151,7 +190,7 @@ fun GameScreen(model: AppModel, table: Table, posture: Posture) {
         when (sheet) {
             Sheet.LOG -> LogSheet(table) { sheet = null }
             Sheet.RULES -> RulesSheet { sheet = null }
-            Sheet.MENU -> MenuSheet(model, table) { sheet = null }
+            Sheet.MENU -> MenuSheet(model, table, { sheet = it }) { sheet = null }
             Sheet.TALK -> TalkSheet(table) { sheet = null }
             null -> Unit
         }
@@ -160,14 +199,69 @@ fun GameScreen(model: AppModel, table: Table, posture: Posture) {
 }
 
 @Composable
-private fun ScoreBar(model: AppModel, table: Table, display: List<Int>, onMenu: () -> Unit) {
+private fun ScoreBar(model: AppModel, table: Table, display: List<Int>, compact: Boolean = false, onMenu: () -> Unit) {
     val colors = model.settings.pegs.colors
     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
         WoodButton("☰", onMenu, size = 16.sp, modifier = Modifier.width(48.dp))
-        Plaque("${model.board.name}, ME  ⤢", Modifier.weight(1f), size = 13.sp)
+        // On a phone the other player's cards sit up here, which leaves the room below for the board.
+        if (compact) OpponentMini(table, Modifier.weight(1f)) else Plaque("${model.board.name}, ME  ⤢", Modifier.weight(1f), size = 13.sp)
         Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(3.dp)) {
-            Plaque("${table.names[table.me].take(18)}: ${display[table.me]}", size = 13.sp, pegColor = colors[table.me])
-            Plaque("${table.names[table.opponent].take(18)}: ${display[table.opponent]}", size = 13.sp, pegColor = colors[table.opponent])
+            ScorePlaque(table.names[table.me], display[table.me], colors[table.me])
+            ScorePlaque(table.names[table.opponent], display[table.opponent], colors[table.opponent])
+        }
+    }
+}
+
+/** A player's score, counting up and giving a little bounce whenever it grows. */
+@Composable
+private fun ScorePlaque(name: String, score: Int, color: Color) {
+    val shown by animateIntAsState(score, tween(650))
+    val pulse = remember { Animatable(1f) }
+    var last by remember { mutableIntStateOf(score) }
+    LaunchedEffect(score) {
+        if (score > last) { pulse.snapTo(1.22f); pulse.animateTo(1f, spring(Spring.DampingRatioMediumBouncy, Spring.StiffnessLow)) }
+        last = score
+    }
+    Plaque("${name.take(18)}: $shown", Modifier.graphicsLayer {
+        scaleX = pulse.value; scaleY = pulse.value; transformOrigin = androidx.compose.ui.graphics.TransformOrigin(1f, 0.5f)
+    }, size = 13.sp, pegColor = color)
+}
+
+/** Three dots that take turns lighting up while the other player decides. */
+@Composable
+private fun ThinkingDots(color: Color) {
+    val t by rememberInfiniteTransition().animateFloat(0f, 3f, infiniteRepeatable(tween(1100, easing = LinearEasing)))
+    Row(horizontalArrangement = Arrangement.spacedBy(3.dp), verticalAlignment = Alignment.CenterVertically) {
+        for (i in 0..2) Box(Modifier.size(6.dp).graphicsLayer {
+            val on = 1f - (kotlin.math.abs(t - i - 0.5f)).coerceIn(0f, 1f)
+            alpha = 0.3f + 0.7f * on; translationY = -on * 3.dp.toPx()
+        }.drawBehind { drawCircle(color) })
+    }
+}
+
+/** The other player is deciding (and nothing is waiting on you). */
+private fun thinking(table: Table) = !table.myTurn && !table.state.over && !table.blocked && table.pendingShow == null && !table.waiting && table.pegOwed == null
+
+/** The other player's cards in a small space: the fan, how many, the dealer's chip, and anything they've said. */
+@Composable
+private fun OpponentMini(table: Table, modifier: Modifier) {
+    val ui = LocalUi.current
+    val n = table.handCounts[table.opponent]
+    Row(modifier, verticalAlignment = Alignment.CenterVertically) {
+        Box(Modifier.height(42.dp).width((24 + n.coerceAtLeast(1) * 9).dp)) {
+            for (i in 0 until n) CardBack(Modifier.height(38.dp).offset(x = (i * 9).dp).graphicsLayer { rotationZ = (i - n / 2f) * 4f }, ui.look.base.cardBack)
+        }
+        Spacer(Modifier.width(4.dp))
+        Column(Modifier.weight(1f)) {
+            val said = table.emote
+            if (said != null) SpeechBubble(said.second) else {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    if (table.online) { Box(Modifier.size(8.dp).drawBehind { drawCircle(if (table.opponentHere) Color(0xFF6FD36F) else Color(0xFF9A9A9A)) }); Spacer(Modifier.width(4.dp)) }
+                    Txt(if (n == 1) "1 card" else "$n cards", size = 12.sp, color = ui.onTable, shadow = true, maxLines = 1)
+                    if (table.state.dealer == table.opponent) { Spacer(Modifier.width(5.dp)); DealerChip() }
+                }
+                if (thinking(table)) ThinkingDots(ui.onTable)
+            }
         }
     }
 }
@@ -184,6 +278,7 @@ private fun OpponentRow(table: Table) {
                 if (table.online) Spacer(Modifier.width(6.dp))
                 Txt(table.names[table.opponent], size = 14.sp, color = ui.onTable, weight = FontWeight.Medium, shadow = true, maxLines = 1)
                 if (s.dealer == table.opponent) { Spacer(Modifier.width(6.dp)); DealerChip() }
+                if (thinking(table)) { Spacer(Modifier.width(8.dp)); ThinkingDots(ui.onTable) }
             }
             table.emote?.let { (_, text) -> SpeechBubble(text) }
         }
@@ -212,31 +307,49 @@ private fun SpeechBubble(text: String) {
 
 /** Everything below the board: the opponent, the table, the coach's note, your hand and the buttons. */
 @Composable
-private fun ColumnScope.PlayColumn(model: AppModel, table: Table, compact: Boolean, onSheet: (Sheet) -> Unit, showOpponent: Boolean = true, showTable: Boolean = true) {
+private fun ColumnScope.PlayColumn(
+    model: AppModel, table: Table, compact: Boolean, onSheet: (Sheet) -> Unit, showOpponent: Boolean = true, showTable: Boolean = true,
+    /** Boards / Settings / Log along the bottom (they're in the menu too). */
+    tabs: Boolean = true,
+    /** A fixed height for the table (a phone); otherwise it takes the room that's left. */
+    tableHeight: androidx.compose.ui.unit.Dp? = null,
+    short: Boolean = false,
+    guide: Boolean = true,
+) {
     val s = table.state
     val help = model.settings.help
     val coachOn = help != com.geoguy89.cribbage.data.Help.OFF && !table.online
-    val tip = remember(s.seq, s.hand, s.phase, s.hands[table.me].size, coachOn) { if (coachOn) Coach.tip(s, table.me) else null }
+    // Keyed on everything that changes what's worth saying: whose turn, the cards down, the count.
+    val tip = remember(s.seq, s.hand, s.phase, s.hands[table.me].size, s.turn, s.count, s.played.size, coachOn) { if (coachOn) Coach.tip(s, table.me) else null }
     val note = table.notes.firstOrNull()
-    if (note == null && (help != com.geoguy89.cribbage.data.Help.OFF || table.online)) {
+    if (guide && note == null && (help != com.geoguy89.cribbage.data.Help.OFF || table.online || table.pegOwed != null)) {
         GuideBar(table, help, compact, Modifier.padding(bottom = 4.dp))
     }
     if (showOpponent) OpponentRow(table)
-    if (showTable) PlayArea(model, table, Modifier.fillMaxWidth().weight(1f).heightIn(min = 100.dp)) else Spacer(Modifier.weight(1f))
+    if (!showTable) Spacer(Modifier.weight(1f))
+    else if (tableHeight != null) PlayArea(model, table, Modifier.fillMaxWidth().height(tableHeight))
+    else PlayArea(model, table, Modifier.fillMaxWidth().weight(1f).heightIn(min = 100.dp))
     if (note != null) {
-        TutorCard(note, table.notes.size - 1, compact) { table.dismissNote(); model.sound(Sfx.CLICK, 0.5f) }
+        TutorCard(note, table.notes.size - 1, compact, short) { table.dismissNote(); model.sound(Sfx.CLICK, 0.5f) }
     } else if (tip != null) {
-        var why by remember { mutableStateOf(false) }
+        // The Why? panel closes itself when the advice moves on to something else.
+        var why by remember(tip.title, s.hand) { mutableStateOf(false) }
         Parchment(Modifier.fillMaxWidth().padding(vertical = 4.dp), pins = !compact, tight = compact) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Hand("tutorial helper", Modifier.weight(1f), size = 15.sp, weight = FontWeight.Bold, color = Color(0xFF6B3A1E))
+            val whyButton: @Composable () -> Unit = {
                 if (tip.why.isNotEmpty()) Box(Modifier.clickable { why = !why }.padding(horizontal = 8.dp, vertical = 2.dp)) {
                     Hand(if (why) "Hide ▴" else "Why? ▾", size = 15.sp, weight = FontWeight.Bold, color = Color(0xFF8A3A20))
                 }
             }
+            if (!compact) Row(verticalAlignment = Alignment.CenterVertically) {
+                Hand("tutorial helper", Modifier.weight(1f), size = 15.sp, weight = FontWeight.Bold, color = Color(0xFF6B3A1E))
+                whyButton()
+            }
             val review = table.review?.takeIf { help == com.geoguy89.cribbage.data.Help.TIPS }
             if (review != null) Hand("Last: " + review.text, size = if (compact) 13.sp else 15.sp, color = Color(0xFF5A3A1E))
-            Hand(tip.text.removeSuffix(" Tap Why? for the reasoning."), size = if (compact) 14.sp else 16.sp, weight = FontWeight.Medium)
+            if (compact) Row(verticalAlignment = Alignment.CenterVertically) {
+                Hand(tip.text.removeSuffix(" Tap Why? for the reasoning."), Modifier.weight(1f), size = 14.sp, weight = FontWeight.Medium)
+                whyButton()
+            } else Hand(tip.text.removeSuffix(" Tap Why? for the reasoning."), size = 16.sp, weight = FontWeight.Medium)
             if (why) Column(Modifier.heightIn(max = 260.dp).verticalScrollCompat().padding(top = 6.dp)) {
                 if (review != null) {
                     Hand(review.title, Modifier.padding(top = 6.dp), size = 15.sp, weight = FontWeight.Bold)
@@ -247,10 +360,13 @@ private fun ColumnScope.PlayColumn(model: AppModel, table: Table, compact: Boole
             }
         }
     }
-    HandRow(model, table, Modifier.fillMaxWidth().padding(top = 4.dp))
-    ActionRow(model, table, tip?.cards.orEmpty(), onSheet)
+    // On a short screen the tutor's note borrows room from the hand and the buttons (nothing can be played until
+    // Continue is tapped anyway), so the board stays big enough to follow.
+    val reading = short && note != null
+    HandRow(model, table, Modifier.fillMaxWidth().padding(top = 4.dp), if (reading) 86.dp else if (short) 112.dp else 134.dp)
+    if (!reading) ActionRow(model, table, tip?.cards.orEmpty(), onSheet)
     Spacer(Modifier.height(6.dp))
-    LeatherTabs(buildList {
+    if (tabs) LeatherTabs(buildList {
         add("Boards" to { model.go(Screen.BOARDS) })
         add("Settings" to { model.go(Screen.SETTINGS) })
         if (table.online) add("Talk" to { onSheet(Sheet.TALK) })
@@ -284,10 +400,22 @@ private fun PlayArea(model: AppModel, table: Table, modifier: Modifier) {
                 val ended = table.endPile?.takeIf { table.pendingShow != null }
                 val pile = ended ?: s.pile
                 val step = if (pile.size <= 1) 0.dp else minOf(cardW * 0.55f, (areaW - cardW * 2.6f) / (pile.size - 1).coerceAtLeast(1))
+                val chips = model.settings.help != com.geoguy89.cribbage.data.Help.OFF
+                val pegColors = model.settings.pegs.colors
+                var running = 0
                 pile.forEachIndexed { i, p ->
+                    running += p.card.value
+                    val total = running
                     key(p.card.id, s.hand) {
                         SlideIn(fromAbove = p.player != table.me) {
-                            CardFace(p.card, Modifier.height(cardH).offset(x = step * i, y = if (p.player == table.me) 6.dp else (-6).dp))
+                            Box(Modifier.offset(x = step * i, y = if (p.player == table.me) 6.dp else (-6).dp)) {
+                                CardFace(p.card, Modifier.height(cardH))
+                                // The count after this card, in the colour of whoever laid it.
+                                if (chips) Box(Modifier.align(Alignment.BottomStart).padding(start = 3.dp, bottom = 4.dp).drawBehind {
+                                    drawRoundRect(pegColors[p.player], cornerRadius = CornerRadius(8.dp.toPx()))
+                                    drawRoundRect(Color.White.copy(alpha = 0.85f), cornerRadius = CornerRadius(8.dp.toPx()), style = androidx.compose.ui.graphics.drawscope.Stroke(1.dp.toPx()))
+                                }.padding(horizontal = 6.dp, vertical = 1.dp)) { Txt("$total", size = 12.sp, color = Color.White, weight = FontWeight.Bold) }
+                            }
                         }
                     }
                 }
@@ -301,7 +429,23 @@ private fun PlayArea(model: AppModel, table: Table, modifier: Modifier) {
             // The crib.
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                 Box(Modifier.width(cardW * 0.7f).height(cardH * 0.7f)) {
-                    for (i in 0 until table.cribCount) CardBack(Modifier.height(cardH * 0.7f).offset((i * 2).dp, (i * -2).dp), ui.look.base.cardBack)
+                    val mine = s.hands[table.me].size
+                    var lastMine by remember(s.hand) { mutableIntStateOf(mine) }
+                    val fromMe = mine < lastMine
+                    for (i in 0 until table.cribCount) key(i, s.hand) {
+                        // Thrown cards sail across to the crib: up from your hand, or down from theirs.
+                        val a = remember { Animatable(0f) }
+                        val below = remember { fromMe }
+                        LaunchedEffect(Unit) { delay(i % 2 * 110L); a.animateTo(1f, tween(460, easing = FastOutSlowInEasing)) }
+                        CardBack(Modifier.height(cardH * 0.7f).offset((i * 2).dp, (i * -2).dp).graphicsLayer {
+                            val f = 1f - a.value
+                            translationY = f * (if (below) 150.dp.toPx() else -110.dp.toPx())
+                            translationX = -f * 120.dp.toPx()
+                            rotationZ = f * (if (below) -40f else 40f)
+                            alpha = (a.value * 2f).coerceIn(0f, 1f)
+                        }, ui.look.base.cardBack)
+                    }
+                    androidx.compose.runtime.SideEffect { lastMine = mine }
                 }
                 Txt(if (s.dealer == table.me) "Your crib" else "Their crib", size = 11.sp, color = ui.onTable, shadow = true)
             }
@@ -313,15 +457,23 @@ private fun PlayArea(model: AppModel, table: Table, modifier: Modifier) {
 private fun CountBadge(count: Int, modifier: Modifier) {
     val ui = LocalUi.current
     val scale by animateFloatAsState(if (count == 15 || count == 31) 1.25f else 1f, spring(Spring.DampingRatioMediumBouncy))
+    val shown by animateIntAsState(count, tween(420))
+    val fill by animateFloatAsState(count / 31f, tween(420))
+    val accent = ui.accent
     Column(modifier, horizontalAlignment = Alignment.CenterHorizontally) {
         Box(Modifier.size(58.dp).graphicsLayer { scaleX = scale; scaleY = scale }.drawBehind {
             drawCircle(Color.Black.copy(alpha = 0.35f), size.minDimension / 2, center + Offset(2f, 3f))
             drawCircle(Brush.radialGradient(listOf(ui.wood.light, ui.wood.base, ui.wood.dark)), size.minDimension / 2)
             drawCircle(ui.wood.dark, size.minDimension / 2, style = androidx.compose.ui.graphics.drawscope.Stroke(2f))
+            // How full the count is: the ring closes at 31.
+            val w = 3.dp.toPx()
+            drawArc(if (count == 15 || count == 31) Color(0xFFE5B93C) else accent, -90f, 360f * fill.coerceIn(0f, 1f), false,
+                Offset(w / 2, w / 2), androidx.compose.ui.geometry.Size(size.width - w, size.height - w),
+                style = androidx.compose.ui.graphics.drawscope.Stroke(w, cap = androidx.compose.ui.graphics.StrokeCap.Round))
         }, contentAlignment = Alignment.Center) {
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                 Txt("COUNT", size = 9.sp, color = ui.ink.copy(alpha = 0.7f))
-                Carved("$count", 22.sp)
+                Carved("$shown", 22.sp)
             }
         }
         Txt(if (count == 31) "31!" else if (count == 15) "15!" else "${31 - count} to go", size = 11.sp, color = ui.onTable, shadow = true, weight = FontWeight.Medium)
@@ -332,11 +484,14 @@ private fun CountBadge(count: Int, modifier: Modifier) {
 @Composable
 private fun SlideIn(fromAbove: Boolean, content: @Composable () -> Unit) {
     val a = remember { Animatable(0f) }
-    LaunchedEffect(Unit) { a.animateTo(1f, tween(320, easing = FastOutSlowInEasing)) }
+    LaunchedEffect(Unit) { a.animateTo(1f, spring(0.62f, Spring.StiffnessMediumLow)) }
     Box(Modifier.graphicsLayer {
-        translationY = (1 - a.value) * (if (fromAbove) -160f else 220f)
-        rotationZ = (1 - a.value) * (if (fromAbove) -12f else 10f)
-        alpha = a.value.coerceIn(0.2f, 1f)
+        val f = 1 - a.value
+        translationY = f * (if (fromAbove) -150.dp.toPx() else 170.dp.toPx())
+        rotationZ = f * (if (fromAbove) -14f else 12f)
+        val grow = 1f + f.coerceIn(0f, 1f) * 0.18f
+        scaleX = grow; scaleY = grow
+        alpha = (a.value * 3f).coerceIn(0f, 1f)
     }) { content() }
 }
 
@@ -371,11 +526,12 @@ private fun Popups(table: Table, modifier: Modifier) {
 
 /** Your hand, fanned. Tap to choose; tap a chosen card again to play it. */
 @Composable
-private fun HandRow(model: AppModel, table: Table, modifier: Modifier) {
+private fun HandRow(model: AppModel, table: Table, modifier: Modifier, height: androidx.compose.ui.unit.Dp = 134.dp) {
     val s = table.state
     val hand = if (table.pendingShow != null) emptyList() else s.hands[table.me]
     val ui = LocalUi.current
-    BoxWithConstraints(modifier.height(134.dp), contentAlignment = Alignment.BottomCenter) {
+    val bob by rememberInfiniteTransition().animateFloat(0f, 1f, infiniteRepeatable(tween(1400, easing = LinearEasing)))
+    BoxWithConstraints(modifier.height(height), contentAlignment = Alignment.BottomCenter) {
         val handW = maxWidth
         val cardH = minOf(maxHeight * 0.86f, 136.dp, handW * 0.3f)
         val cardW = cardH * CARD_ASPECT
@@ -390,12 +546,14 @@ private fun HandRow(model: AppModel, table: Table, modifier: Modifier) {
                 val enter = remember { Animatable(0f) }
                 LaunchedEffect(Unit) { delay(i * 90L); model.sound(Sfx.DEAL, 0.5f); enter.animateTo(1f, tween(380, easing = FastOutSlowInEasing)) }
                 val angle = (i - (n - 1) / 2f) * 4f
+                val scores = s.phase == Phase.PEG && table.myTurn && playable && !sel && model.settings.help != com.geoguy89.cribbage.data.Help.OFF && pegPoints(s, card) > 0
                 Box(
                     Modifier
                         .align(Alignment.BottomStart)
                         .offset(x = (handW - total) / 2 + step * i)
                         .graphicsLayer {
-                            translationY = -lift * 22.dp.toPx() + kotlin.math.abs(i - (n - 1) / 2f) * 3.dp.toPx() + (1 - enter.value) * -260.dp.toPx()
+                            translationY = -lift * 22.dp.toPx() + kotlin.math.abs(i - (n - 1) / 2f) * 3.dp.toPx() + (1 - enter.value) * -260.dp.toPx() -
+                                (if (scores) (0.5f - 0.5f * kotlin.math.cos(bob * 2 * kotlin.math.PI).toFloat()) * 7.dp.toPx() else 0f)
                             translationX = (1 - enter.value) * 120.dp.toPx()
                             rotationZ = angle * enter.value
                             alpha = enter.value
@@ -431,6 +589,8 @@ private fun ActionRow(model: AppModel, table: Table, hint: List<Card>, onSheet: 
     val (label, enabled, action) = when {
         s.over -> Triple("Game over", false) {}
         table.blocked -> Triple("Continue above", false) {}
+        table.pegOwed != null -> Triple("Move your peg", false) {}
+        table.waiting -> Triple("Continue ▸", true) { table.proceed() }
         !table.myTurn -> Triple(if (table.busy) "Sending..." else "${table.names[table.opponent]}'s turn", false) {}
         s.phase == Phase.DISCARD -> if (sel.size == 2) Triple("Throw to crib", true) { table.discard(sel) } else Triple(if (sel.isEmpty()) "Pick 2 cards" else "Pick 1 more", false) {}
         else -> sel.firstOrNull()?.let { c ->
@@ -500,11 +660,15 @@ private fun ShowOverlay(model: AppModel, table: Table, show: Show, step: ShowSte
             Spacer(Modifier.height(8.dp))
             val lit = shown.lastOrNull()?.cards.orEmpty()
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.Bottom) {
-                for (c in count.cards) CardFace(c, Modifier.weight(1f), glow = if (c in lit) ui.accent else null)
+                for (c in count.cards) {
+                    val up by animateFloatAsState(if (c in lit) 1f else 0f, spring(Spring.DampingRatioMediumBouncy, Spring.StiffnessMediumLow))
+                    CardFace(c, Modifier.weight(1f).graphicsLayer { translationY = -up * 12.dp.toPx(); alpha = if (lit.isEmpty()) 1f else 0.62f + 0.38f * up.coerceIn(0f, 1f) }, glow = if (c in lit) ui.accent else null)
+                }
                 Spacer(Modifier.width(8.dp))
                 Column(Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally) {
+                    val up by animateFloatAsState(if (show.starter in lit) 1f else 0f, spring(Spring.DampingRatioMediumBouncy, Spring.StiffnessMediumLow))
                     Txt("starter", size = 11.sp)
-                    CardFace(show.starter, Modifier.fillMaxWidth(), glow = if (show.starter in lit) ui.accent else null)
+                    CardFace(show.starter, Modifier.fillMaxWidth().graphicsLayer { translationY = -up * 12.dp.toPx(); alpha = if (lit.isEmpty()) 1f else 0.62f + 0.38f * up.coerceIn(0f, 1f) }, glow = if (show.starter in lit) ui.accent else null)
                 }
             }
             Spacer(Modifier.height(10.dp))
@@ -523,7 +687,8 @@ private fun ShowOverlay(model: AppModel, table: Table, show: Show, step: ShowSte
             }
             Spacer(Modifier.height(6.dp))
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Carved("$running", 30.sp)
+                val tally by animateIntAsState(running, tween(450))
+                Carved("$tally", 30.sp)
                 Txt(if (step.items >= count.score.items.size) "  points" else "  so far", size = 14.sp)
                 Spacer(Modifier.weight(1f))
                 if (!auto && !tutor) WoodButton("Count it all", {
@@ -631,10 +796,21 @@ val RULES = listOf(
 )
 
 @Composable
-private fun MenuSheet(model: AppModel, table: Table, onClose: () -> Unit) {
+private fun MenuSheet(model: AppModel, table: Table, onSheet: (Sheet) -> Unit, onClose: () -> Unit) {
     var confirm by remember { mutableStateOf(false) }
     Sheet("Menu", onClose) {
         WoodButton("Back to the game", onClose, Modifier.fillMaxWidth(), primary = true)
+        Spacer(Modifier.height(8.dp))
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            WoodButton("Boards", { onClose(); model.go(Screen.BOARDS) }, Modifier.weight(1f), size = 14.sp)
+            WoodButton("Settings", { onClose(); model.go(Screen.SETTINGS) }, Modifier.weight(1f), size = 14.sp)
+        }
+        Spacer(Modifier.height(8.dp))
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            WoodButton("Game log", { onSheet(Sheet.LOG) }, Modifier.weight(1f), size = 14.sp)
+            if (table.online) WoodButton("Talk", { onSheet(Sheet.TALK) }, Modifier.weight(1f), size = 14.sp)
+            else WoodButton("Scoring", { onSheet(Sheet.RULES) }, Modifier.weight(1f), size = 14.sp)
+        }
         Spacer(Modifier.height(8.dp))
         if (table is LocalTable) {
             WoodButton("New game", { onClose(); model.newSoloGame(table.difficulty) }, Modifier.fillMaxWidth())
@@ -673,7 +849,7 @@ fun Toast(text: String, modifier: Modifier = Modifier) {
  * holes and pegs are big enough to follow. Tap anywhere to close.
  */
 @Composable
-private fun BoardZoom(model: AppModel, scores: List<Int>, prev: List<Int>, onClose: () -> Unit) {
+private fun BoardZoom(model: AppModel, scores: List<Int>, prev: List<Int>, pegTarget: Pair<Int, Int>?, onPegTap: (Boolean) -> Unit, onClose: () -> Unit) {
     val ui = LocalUi.current
     BoxWithConstraints(Modifier.fillMaxSize().drawBehind { drawRect(Color.Black.copy(alpha = 0.75f)) }
         .clickable(remember { androidx.compose.foundation.interaction.MutableInteractionSource() }, null, onClick = onClose), contentAlignment = Alignment.Center) {
@@ -681,21 +857,22 @@ private fun BoardZoom(model: AppModel, scores: List<Int>, prev: List<Int>, onClo
         val w = if (turn) maxHeight else maxWidth
         val h = if (turn) maxWidth else maxHeight
         Box(Modifier.requiredSize(w, h).graphicsLayer { rotationZ = if (turn) 90f else 0f }.padding(12.dp), contentAlignment = Alignment.Center) {
-            BoardView(model.board, scores, prev, Modifier, pegs = model.settings.pegs, ambient = model.settings.ambient)
+            BoardView(model.board, scores, prev, Modifier, pegs = model.settings.pegs, ambient = model.settings.ambient,
+                onTap = onClose, pegTarget = pegTarget, onPegTap = onPegTap)
         }
-        Txt("Tap to close", Modifier.align(Alignment.BottomCenter).padding(bottom = 12.dp), size = 14.sp, color = ui.onTable, shadow = true)
+        Txt(if (pegTarget != null) "Tap the glowing hole to move your peg" else "Tap to close", Modifier.align(Alignment.BottomCenter).padding(bottom = 12.dp), size = 14.sp, color = ui.onTable, shadow = true)
     }
 }
 
 /** The full tutor's note: what just happened, explained, with Continue to move on. */
 @Composable
-private fun TutorCard(note: com.geoguy89.cribbage.game.Note, more: Int, compact: Boolean, onContinue: () -> Unit) {
+private fun TutorCard(note: com.geoguy89.cribbage.game.Note, more: Int, compact: Boolean, short: Boolean = false, onContinue: () -> Unit) {
     Parchment(Modifier.fillMaxWidth().padding(vertical = 4.dp), pins = !compact) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Hand("tutor · " + note.title, Modifier.weight(1f), size = 17.sp, weight = FontWeight.Bold, color = Color(0xFF6B3A1E))
             if (more > 0) Hand("$more more", size = 13.sp, color = Color(0xFF8A6A4A))
         }
-        Column(Modifier.heightIn(max = if (compact) 150.dp else 320.dp).verticalScrollCompat().padding(vertical = 4.dp)) {
+        Column(Modifier.heightIn(max = if (short) 118.dp else if (compact) 150.dp else 320.dp).verticalScrollCompat().padding(vertical = 4.dp)) {
             for (line in note.lines) Hand(line, Modifier.padding(vertical = 2.dp), size = if (compact) 15.sp else 16.sp, color = Color(0xFF2E2014))
         }
         WoodButton("Continue ▸", onContinue, Modifier.fillMaxWidth(), primary = true, size = 15.sp)

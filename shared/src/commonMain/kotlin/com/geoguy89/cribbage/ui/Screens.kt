@@ -228,6 +228,12 @@ fun SettingsScreen(model: AppModel) {
         Section("Play")
         SettingRow("Help while you play", s.help.blurb) {}
         Chips(com.geoguy89.cribbage.data.Help.entries.map { it.title }, s.help.ordinal) { i -> model.updateSettings { it.copy(help = com.geoguy89.cribbage.data.Help.entries[i]) } }
+        SettingRow("One step at a time", "With the helper on, the computer waits for you to tap Continue before it plays, so nothing changes while you're reading") {
+            Toggle(s.stepByStep, { v -> model.updateSettings { it.copy(stepByStep = v) } })
+        }
+        SettingRow("Peg it yourself", "When you score during the play, tap the glowing hole to move your own peg") {
+            Toggle(s.selfPeg, { v -> model.updateSettings { it.copy(selfPeg = v) } })
+        }
         SettingRow("Game speed", "How quickly the computer plays its cards") {}
         Chips(com.geoguy89.cribbage.data.Pace.entries.map { it.title }, s.pace.ordinal) { i -> model.updateSettings { it.copy(pace = com.geoguy89.cribbage.data.Pace.entries[i]) } }
         SettingRow("Count the show for me", "Step through hand counts automatically") { Toggle(s.autoShow, { v -> model.updateSettings { it.copy(autoShow = v) } }) }

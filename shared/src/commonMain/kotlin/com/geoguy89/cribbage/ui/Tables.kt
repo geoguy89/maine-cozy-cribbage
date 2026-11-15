@@ -60,6 +60,23 @@ abstract class Table {
     open val endCount: Int get() = 0
     /** The helper's look back at the last card laid (or the player's discard). */
     var review by mutableStateOf<com.geoguy89.cribbage.game.Tip?>(null)
+    /** Step by step: the computer is holding its next card until the player taps Continue. */
+    open val waiting: Boolean get() = false
+    open fun proceed() {}
+    /** Peg it yourself: points scored in the play wait for the player to move their own peg. */
+    var selfPeg: Boolean = false
+        set(value) { field = value; if (!value) pegMoved() }
+    /** The score the player's front peg stands on. It trails the real score while a peg is waiting to be moved. */
+    var pegAt by mutableIntStateOf(-1)
+        private set
+    /** The score the player's peg should be moved to, if it's waiting. */
+    val pegOwed: Int? get() = state.scores[me].takeIf { selfPeg && pegAt >= 0 && it > pegAt && pendingShow == null && !state.over }
+    fun pegMoved() {
+        if (pegAt == state.scores[me]) return
+        pegAt = state.scores[me]
+        afterPeg()
+    }
+    protected open fun afterPeg() {}
     private var seenSeq = -1
     private var popupId = 0
     /** Sounds and haptics for new events. */
@@ -80,7 +97,7 @@ abstract class Table {
     open fun sendEmote(i: Int) {}
     open fun close() {}
 
-    open fun ackShow() { state.lastShow?.let { shownHand = maxOf(shownHand, it.hand) } }
+    open fun ackShow() { state.lastShow?.let { shownHand = maxOf(shownHand, it.hand) }; pegAt = state.scores[me] }
 
     fun toggle(card: Card) {
         if (busy || blocked || !myTurn) return
@@ -93,9 +110,11 @@ abstract class Table {
 
     /** Turns new log entries into popups and sounds. The first look at a state just records where it is. */
     protected fun absorb(s: GameState) {
-        if (seenSeq < 0) { seenSeq = s.seq; return }
+        if (seenSeq < 0) { seenSeq = s.seq; pegAt = s.scores[me]; return }
         val fresh = s.log.filter { it.seq > seenSeq }
         seenSeq = s.seq
+        // The show moves the pegs itself; only points made in the play are pegged by hand.
+        if (!selfPeg || s.over || (s.lastShow?.hand ?: 0) > shownHand) pegAt = s.scores[me]
         for (e in fresh) {
             onEvent(e)
             // Show scores are walked through by the show; only pegging and his heels pop up on the table.
@@ -124,6 +143,7 @@ class LocalTable(
     /** Multiplies the computer's thinking time: 1 normal, more is slower. */
     var pace: Float = 1.6f,
     tutor: Boolean = false,
+    stepByStep: Boolean = false,
 ) : Table() {
     private val random = Random(seed)
     override var state by mutableStateOf(initial ?: Rules.newGame(random))
@@ -147,6 +167,22 @@ class LocalTable(
             if (!value) { notes = emptyList(); drive() }
         }
 
+    /** The computer waits for a tap on Continue before each card it lays, so nothing changes while you're reading. */
+    var stepByStep: Boolean = stepByStep
+        set(value) { field = value; if (!value && waiting) drive() }
+    override var waiting by mutableStateOf(false)
+        private set
+    /** The player has just said to carry on (Continue, or the tutor's note). */
+    private var cleared = false
+
+    override fun proceed() {
+        if (!waiting) return
+        cleared = true
+        drive()
+    }
+
+    override fun afterPeg() = drive()
+
     init {
         shownHand = shown
         absorb(state)
@@ -160,6 +196,7 @@ class LocalTable(
 
     override fun dismissNote() {
         notes = notes.drop(1)
+        if (notes.isEmpty()) cleared = true
         drive()
     }
 
@@ -193,6 +230,7 @@ class LocalTable(
 
     override fun play(card: Card) {
         if (blocked || !myTurn || state.phase != Phase.PEG || card.value + state.count > 31) return
+        if (pegOwed != null) { message = "Move your peg first: tap the glowing hole on the board."; return }
         selected = emptySet()
         laid(me, card)
     }
@@ -213,9 +251,14 @@ class LocalTable(
     /** The computer's moves: wait for the player to read the tutor and look at the show, then think and act. */
     private fun drive() {
         ai?.cancel()
+        waiting = false
         val s = state
-        if (s.over || pendingShow != null || notes.isNotEmpty()) return
+        if (s.over || pendingShow != null || notes.isNotEmpty() || pegOwed != null) return
         val bot = opponent
+        val botPlays = s.phase == Phase.PEG && s.turn == bot
+        if (botPlays && stepByStep && !cleared) { waiting = true; return }
+        val prompt = cleared
+        cleared = false
         ai = scope.launch {
             when {
                 s.phase == Phase.DISCARD && s.hands[bot].size == 6 -> {
@@ -223,7 +266,8 @@ class LocalTable(
                     update(Rules.discard(state, bot, Ai.chooseDiscard(state.hands[bot], state.dealer == bot, difficulty, random)))
                 }
                 s.phase == Phase.PEG && s.turn == bot -> {
-                    delay(((900 + random.nextInt(500)) * pace).toLong())
+                    // After a Continue the player is already waiting on it, so it doesn't dawdle.
+                    delay(((if (prompt) 450 else 900 + random.nextInt(500)) * pace).toLong())
                     laid(bot, Ai.choosePlay(state, bot, difficulty, random))
                 }
             }
@@ -305,6 +349,7 @@ class OnlineTable(
 
     override fun play(card: Card) {
         if (busy) return
+        if (pegOwed != null) { message = "Move your peg first: tap the glowing hole on the board."; return }
         busy = true
         selected = emptySet()
         service.play(gameId, card, ::failed) { busy = false; accept(it) }

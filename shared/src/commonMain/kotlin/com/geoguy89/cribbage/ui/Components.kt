@@ -75,7 +75,7 @@ class Ui(val look: Look, val fonts: BoardFonts) {
     val ink: Color get() = look.base.ink
     val accent: Color get() = look.accent
     /** Text that sits straight on the table. */
-    val onTable: Color get() = if (look.base == BaseTheme.BIRCH_MORNING) Color(0xFF2B2017) else Color(0xFFF6EBD2)
+    val onTable: Color get() = if (look.base == BaseTheme.BIRCH_MORNING || look.base == BaseTheme.LOBSTER_SHACK) Color(0xFF2B2017) else Color(0xFFF6EBD2)
 }
 
 val LocalUi = staticCompositionLocalOf<Ui> { error("no Ui") }

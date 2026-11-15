@@ -162,6 +162,59 @@ class ScreenRenderTest {
         render("game_show", 412, 900, m)
     }
 
+    /** The narrow cover screen of a foldable: everything has to fit, down to the buttons. */
+    @Test
+    fun gameCoverScreen() {
+        val m = model(Settings(playerName = "Travis", nameChosen = true, welcomed = true, board = "eastport"))
+        m.openTable(table(m, Rules.newGame(Random(3))))
+        render("game_cover_discard", 338, 680, m)
+        val m2 = model(Settings(playerName = "Travis", nameChosen = true, welcomed = true, board = "sebec", help = com.geoguy89.cribbage.data.Help.TIPS))
+        m2.openTable(table(m2, midGame(21)))
+        render("game_cover_play", 338, 680, m2)
+        val m3 = model(Settings(playerName = "Travis", nameChosen = true, welcomed = true, board = "oob"))
+        val s = midGame(12, cardsPlayed = 2)
+        val t = table(m3, s)
+        m3.openTable(t)
+        t.play(s.playable(0).first())
+        render("game_cover_tutor", 338, 680, m3)
+    }
+
+    /** Unfolded, nearly square: a long board runs across the top, a round one sits beside the cards. */
+    @Test
+    fun gameUnfoldedSquare() {
+        val m = model(Settings(playerName = "Travis", nameChosen = true, welcomed = true, board = "sebec", theme = BaseTheme.GRANGE_HALL))
+        m.openTable(table(m, midGame(8)))
+        render("game_square_long_board", 700, 760, m)
+        val m2 = model(Settings(playerName = "Travis", nameChosen = true, welcomed = true, board = "dirigo", theme = BaseTheme.ACADIA_SUNRISE, help = com.geoguy89.cribbage.data.Help.TIPS))
+        val s = midGame(12, cardsPlayed = 2)
+        val t = LocalTable(scope, Difficulty.MEDIUM, "Travis", s, s.lastShow?.hand ?: 0, 1L, { _, _, _ -> }, pace = 1000f, stepByStep = true)
+        m2.openTable(t)
+        t.play(s.playable(0).first())
+        render("game_square_round_board_waiting", 700, 760, m2)
+    }
+
+    /** Peg it yourself: after a scoring card, the hole to move to glows. */
+    @Test
+    fun gameSelfPeg() {
+        val seed = (1..400).first { sd ->
+            val s = midGame(sd, cardsPlayed = 2)
+            s.turn == 0 && s.phase == Phase.PEG && s.count in 1..30 && s.hands[0].size > 1 && s.playable(0).any { com.geoguy89.cribbage.ui.pegPoints(s, it) > 0 }
+        }
+        val m = model(Settings(playerName = "Travis", nameChosen = true, welcomed = true, board = "machias", selfPeg = true, theme = BaseTheme.LOBSTER_SHACK, help = com.geoguy89.cribbage.data.Help.TIPS))
+        val s = midGame(seed, cardsPlayed = 2)
+        val t = table(m, s)
+        m.openTable(t)
+        t.play(s.playable(0).first { com.geoguy89.cribbage.ui.pegPoints(s, it) > 0 })
+        render("game_selfpeg", 412, 900, m)
+    }
+
+    @Test
+    fun newBackdrops() {
+        for (theme in listOf(BaseTheme.ACADIA_SUNRISE, BaseTheme.BLUEBERRY_BARRENS, BaseTheme.LOBSTER_SHACK, BaseTheme.GRANGE_HALL)) {
+            render("backdrop_${theme.name.lowercase()}", 412, 900, model(Settings(playerName = "Travis", nameChosen = true, welcomed = true, theme = theme, seasonal = false, board = "pemaquid")))
+        }
+    }
+
     @Test
     fun pages() {
         val m = model()

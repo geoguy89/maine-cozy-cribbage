@@ -18,7 +18,7 @@ object Coach {
                 "Waiting", "Your two cards are in the crib. Waiting on the other player to throw theirs.",
                 why = listOf("Once both players have thrown, the pone cuts and the starter is turned up. It counts as a fifth card for both hands and the crib."),
             )
-            Phase.PEG -> if (s.turn == me) pegTip(s, me) else Tip("Their turn", countNote(s), why = watchWhy())
+            Phase.PEG -> if (s.turn == me) pegTip(s, me) else Tip("Their turn", countNote(s, s.hands[me]), why = watchWhy())
             Phase.OVER -> null
         }
     }
@@ -163,11 +163,17 @@ object Coach {
         return out
     }
 
-    private fun countNote(s: GameState): String = when (s.count) {
-        0 -> "They're leading. Watch what they lay: if it's a ten-card, your five makes 15."
-        in 1..14 -> "The count is ${s.count}. If they leave it at 5 or 21, a ten-card scores you two."
-        15 -> "Fifteen! Now it's a race to 31."
-        else -> "The count is ${s.count}. ${31 - s.count} to go for thirty-one."
+    /** What to watch for while the other player decides, in terms of the cards actually in [hand]. */
+    private fun countNote(s: GameState, hand: List<Card>): String {
+        val tens = hand.count { it.value == 10 }
+        return when {
+            s.count == 0 && hand.any { it.value == 5 } -> "They're leading. Watch what they lay: if it's a ten-card, your 5 makes 15 for 2."
+            s.count == 0 && tens > 0 -> "They're leading. Watch what they lay: if it's a 5, one of your ten-cards makes 15 for 2. Matching their card's rank scores a pair."
+            s.count == 0 -> "They're leading. Watch what they lay: a card of yours that adds with it to 15 scores 2, and matching its rank scores a pair."
+            s.count < 15 -> "The count is ${s.count}. Watch what they add: you score 2 if your next card makes it exactly 15."
+            s.count == 15 -> "Fifteen! Now it's a race to 31."
+            else -> "The count is ${s.count}. ${31 - s.count} to go for thirty-one."
+        }
     }
 
     private fun watchWhy(): List<String> = listOf(

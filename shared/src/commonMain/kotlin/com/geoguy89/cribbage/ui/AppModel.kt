@@ -150,8 +150,13 @@ class AppModel(
         (table as? LocalTable)?.let { t ->
             t.pace = s.pace.factor
             t.tutor = s.help == com.geoguy89.cribbage.data.Help.TUTOR
+            t.stepByStep = stepByStep(s)
         }
+        table?.selfPeg = s.selfPeg
     }
+
+    /** Step-by-step play goes with the helper: with help off, the game just flows. */
+    private fun stepByStep(s: Settings = settings) = s.stepByStep && s.help != com.geoguy89.cribbage.data.Help.OFF
 
     fun sound(sfx: Sfx, volume: Float = 1f, rate: Float = 1f) = audio.play(sfx, volume, rate)
     fun haptic(h: Haptic) { if (settings.haptics) platform.haptic(h) }
@@ -178,7 +183,7 @@ class AppModel(
         table?.close()
         updateSettings { it.copy(difficulty = difficulty) }
         val seed = Clock.System.now().toEpochMilliseconds()
-        table = LocalTable(scope, difficulty, settings.playerName, null, 0, seed, ::saveSolo, settings.pace.factor, settings.help == com.geoguy89.cribbage.data.Help.TUTOR).also(::wire)
+        table = LocalTable(scope, difficulty, settings.playerName, null, 0, seed, ::saveSolo, settings.pace.factor, settings.help == com.geoguy89.cribbage.data.Help.TUTOR, stepByStep()).also(::wire)
         store.saveGame(SavedGame(table!!.state, difficulty, 0, seed))
         sound(Sfx.SHUFFLE)
         screen = Screen.GAME
@@ -188,7 +193,7 @@ class AppModel(
         val saved = store.savedGame() ?: return newSoloGame()
         table?.close()
         // A fresh seed, so a resumed game doesn't replay the same deals.
-        table = LocalTable(scope, saved.difficulty, settings.playerName, saved.state, saved.shownHand, saved.seed + saved.state.seq, ::saveSolo, settings.pace.factor, settings.help == com.geoguy89.cribbage.data.Help.TUTOR).also(::wire)
+        table = LocalTable(scope, saved.difficulty, settings.playerName, saved.state, saved.shownHand, saved.seed + saved.state.seq, ::saveSolo, settings.pace.factor, settings.help == com.geoguy89.cribbage.data.Help.TUTOR, stepByStep()).also(::wire)
         screen = Screen.GAME
     }
 
@@ -199,6 +204,7 @@ class AppModel(
 
     private fun wire(t: Table) {
         t.onEvent = { e -> onGameEvent(t, e) }
+        t.selfPeg = settings.selfPeg
     }
 
     private fun onGameEvent(t: Table, e: LogEntry) {

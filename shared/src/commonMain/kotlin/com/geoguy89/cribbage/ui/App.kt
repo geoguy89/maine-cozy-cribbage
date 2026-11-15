@@ -3,6 +3,8 @@ package com.geoguy89.cribbage.ui
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
 import androidx.compose.animation.togetherWith
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.layout.Box
@@ -22,7 +24,7 @@ fun CribbageApp(model: AppModel, posture: Posture = Posture()) {
     ProvideUi(model.look) {
         Scenery(model.look, animate = model.settings.ambient) {
             Box(Modifier.fillMaxSize().safeDrawingPadding()) {
-                AnimatedContent(model.screen, transitionSpec = { fadeIn(tween(220)) togetherWith fadeOut(tween(160)) }, label = "screen") { screen ->
+                AnimatedContent(model.screen, transitionSpec = { (fadeIn(tween(260)) + scaleIn(tween(260), initialScale = 0.96f)) togetherWith (fadeOut(tween(160)) + scaleOut(tween(160), targetScale = 1.03f)) }, label = "screen") { screen ->
                     when (screen) {
                         Screen.TITLE -> TitleScreen(model)
                         Screen.GAME -> model.table?.let { GameScreen(model, it, posture) } ?: TitleScreen(model)

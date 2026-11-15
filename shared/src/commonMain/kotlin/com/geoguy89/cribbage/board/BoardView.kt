@@ -3,6 +3,14 @@ package com.geoguy89.cribbage.board
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.unit.dp
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.aspectRatio
@@ -39,6 +47,7 @@ import com.geoguy89.cribbage.resources.cinzel
 import com.geoguy89.cribbage.resources.kalam
 import com.geoguy89.cribbage.resources.oswald
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.jetbrains.compose.resources.Font
 import kotlin.math.PI
@@ -62,6 +71,17 @@ fun rememberBoardFonts(): BoardFonts {
 
 private class Painted(val image: ImageBitmap, val waters: List<WaterArea>)
 
+/** Boards already painted this session, so the board list and the game don't paint them again. Main thread only. */
+private object BoardCache {
+    private val map = LinkedHashMap<String, Painted>()
+    operator fun get(key: String): Painted? = map[key]
+    operator fun set(key: String, value: Painted) {
+        map.remove(key)
+        map[key] = value
+        while (map.size > 24) map.remove(map.keys.first())
+    }
+}
+
 /**
  * A board with both players' pegs. When a score goes up, the back peg hops past the front one to the new hole, the
  * way it's done on a real board. [ambient] adds fish jumping in the water.
@@ -78,22 +98,41 @@ fun BoardView(
     onPegLanded: () -> Unit = {},
     /** Flags with each player's score beside their front peg. */
     showScores: Boolean = true,
+    /** Called for a tap on the board (when no peg is waiting to be moved). */
+    onTap: (() -> Unit)? = null,
+    /** Peg it yourself: (player, score) of a peg waiting to be moved by hand. The hole glows until it's tapped. */
+    pegTarget: Pair<Int, Int>? = null,
+    /** A tap while a peg is waiting: true if it was on (or near) the right hole. */
+    onPegTap: (Boolean) -> Unit = {},
 ) {
     BoxWithConstraints(modifier.aspectRatio(design.aspect)) {
         val density = LocalDensity.current
         val px = constraints.maxWidth.coerceAtLeast(1)
         val measurer = rememberTextMeasurer(cacheSize = 64)
+        // The score flags get their own measurer: the board's is busy on another thread while it paints.
+        val flagMeasurer = rememberTextMeasurer(cacheSize = 8)
         val fonts = rememberBoardFonts()
-        val painted by produceState<Painted?>(null, design, px, fonts) {
-            value = withContext(Dispatchers.Default) {
-                val (img, waters) = renderBoard(design, px, measurer, fonts, density)
-                Painted(img, waters)
+        val cacheKey = "${design.id}@$px@${density.density}@${density.fontScale}"
+        val painted by produceState(BoardCache[cacheKey], design, px, fonts) {
+            value = BoardCache[cacheKey]
+            if (value == null) {
+                val base = withContext(Dispatchers.Default) { renderBoardBase(design, px, measurer, fonts, density) }
+                // Back on the main thread for the lettering.
+                value = Painted(base.letter(), base.waters).also { BoardCache[cacheKey] = it }
             }
         }
         val geometry = design.geometry
+        val target by rememberUpdatedState(pegTarget)
+        val tapped by rememberUpdatedState(onTap)
+        val pegTapped by rememberUpdatedState(onPegTap)
+        val beckon by rememberInfiniteTransition().animateFloat(0f, 1f, infiniteRepeatable(tween(850), RepeatMode.Reverse))
         // Each player's two pegs, as fractional scores so they can glide; plus how high each is lifted.
         val pegPos = remember(design) { List(2) { p -> listOf(Animatable(prevScores.getOrElse(p) { -1 }.toFloat()), Animatable(scores.getOrElse(p) { 0 }.toFloat())) } }
         val lift = remember(design) { List(2) { List(2) { Animatable(0f) } } }
+        // The holes a player has just pegged glow for a moment, and a ring spreads from where the peg lands.
+        val gain = remember(design) { List(2) { mutableStateOf(0 to 0) } }
+        val gainGlow = remember(design) { List(2) { Animatable(0f) } }
+        val ring = remember(design) { List(2) { Animatable(1f) } }
         for (p in 0..1) {
             val score = scores.getOrElse(p) { 0 }
             val prev = prevScores.getOrElse(p) { -1 }
@@ -107,12 +146,17 @@ fun BoardView(
                         // The back peg leapfrogs to the new score.
                         val mover = 1 - front
                         val holes = (score - pegPos[p][mover].value).coerceAtLeast(1f)
-                        val ms = (320 + holes * 22).toInt().coerceAtMost(1100)
+                        val ms = (260 + holes * 70).toInt().coerceAtMost(1700)
                         val up = lift[p][mover]
+                        gain[p].value = frontVal.toInt() to score
+                        gainGlow[p].snapTo(1f)
                         up.animateTo(1f, tween(140))
                         pegPos[p][mover].animateTo(score.toFloat(), tween(ms, easing = FastOutSlowInEasing))
                         up.animateTo(0f, tween(160))
                         onPegLanded()
+                        ring[p].snapTo(0f)
+                        launch { ring[p].animateTo(1f, tween(700)) }
+                        gainGlow[p].animateTo(0f, tween(1800, delayMillis = 900))
                     }
                     else -> {
                         // A new game or a jump backwards: set both pegs straight away.
@@ -126,7 +170,18 @@ fun BoardView(
             val start = withFrameNanos { it }
             while (true) withFrameNanos { time = (it - start) / 1_000_000 }
         }
-        Canvas(Modifier.fillMaxSize()) {
+        val taps = if (onTap == null && pegTarget == null) Modifier else Modifier.pointerInput(design) {
+            detectTapGestures { pos ->
+                val t = target
+                if (t == null) tapped?.invoke()
+                else {
+                    val at = geometry.position(t.first, t.second) * (size.width / 100f)
+                    // Generous: a fingertip on a phone covers a good few holes.
+                    pegTapped((pos - at).getDistance() <= maxOf(size.width * 0.09f, 22.dp.toPx()))
+                }
+            }
+        }
+        Canvas(Modifier.fillMaxSize().then(taps)) {
             val ready = painted ?: return@Canvas
             val img = ready.image
             val waters = ready.waters
@@ -136,11 +191,43 @@ fun BoardView(
                 if (ambient) for ((i, w) in waters.withIndex()) wildlife(w, time, i)
                 val r = design.trackSpec.holeR * 1.6f
                 for (p in 0..1) {
+                    val glow = gainGlow[p].value
+                    if (glow > 0.01f) {
+                        val (from, to) = gain[p].value
+                        for (hole in (from + 1).coerceAtLeast(1)..to.coerceAtMost(120)) {
+                            val at = geometry.holes[p][hole]
+                            drawCircle(Color(0xFFFFE08A).copy(alpha = 0.35f * glow), r * 1.5f, at)
+                            drawCircle(pegs.colors[p].copy(alpha = 0.85f * glow), r * 0.62f, at)
+                        }
+                    }
+                    val rv = ring[p].value
+                    if (rv < 0.99f) {
+                        val at = geometry.position(p, maxOf(pegPos[p][0].value, pegPos[p][1].value))
+                        drawCircle(Color.White.copy(alpha = 0.8f * (1f - rv)), r * (1.2f + 3.2f * rv), at, style = Stroke(0.35f * (1f - rv) + 0.08f))
+                        drawCircle(pegs.colors[p].copy(alpha = 0.5f * (1f - rv)), r * (1.0f + 2.2f * rv), at, style = Stroke(0.3f))
+                    }
+                }
+                // Peg it yourself: the holes to count light up, and the one to move to beckons.
+                target?.let { (p, to) ->
+                    val from = maxOf(pegPos[p][0].value, pegPos[p][1].value).toInt()
+                    for (hole in (from + 1)..to) {
+                        val at = geometry.position(p, hole)
+                        drawCircle(Color(0xFFFFE08A).copy(alpha = 0.55f), r * 1.25f, at)
+                        drawCircle(pegs.colors[p].copy(alpha = 0.9f), r * 0.55f, at)
+                    }
+                    val at = geometry.position(p, to)
+                    drawCircle(Color(0xFFFFE08A).copy(alpha = 0.30f + 0.25f * beckon), r * (2.6f + 1.6f * beckon), at)
+                    drawCircle(Color.White.copy(alpha = 0.95f), r * (2.0f + 1.4f * beckon), at, style = Stroke(0.45f))
+                    drawCircle(pegs.colors[p], r * (1.5f + 0.9f * beckon), at, style = Stroke(0.35f))
+                }
+                // A peg on the move hops from hole to hole.
+                fun hop(v: Float, up: Float): Float = up * (0.45f + 0.55f * kotlin.math.abs(sin(v * PI)).toFloat())
+                for (p in 0..1) {
                     val front = if (pegPos[p][0].value >= pegPos[p][1].value) 0 else 1
                     // The back peg (the previous score) is smaller and faded, so the front one clearly leads.
                     val back = 1 - front
-                    peg(geometry.position(p, pegPos[p][back].value), r * 0.8f, pegs.colors[p].copy(alpha = 0.6f), lift[p][back].value)
-                    peg(geometry.position(p, pegPos[p][front].value), r, pegs.colors[p], lift[p][front].value)
+                    peg(geometry.position(p, pegPos[p][back].value), r * 0.8f, pegs.colors[p].copy(alpha = 0.6f), hop(pegPos[p][back].value, lift[p][back].value))
+                    peg(geometry.position(p, pegPos[p][front].value), r, pegs.colors[p], hop(pegPos[p][front].value, lift[p][front].value))
                 }
                 if (showScores) for (p in 0..1) {
                     // A small flag in the player's colour beside the front peg, with the score on it.
@@ -151,7 +238,7 @@ fun BoardView(
                     val side = if (p == 0) 1f else -1f
                     val out = geometry.normal[i] * (design.trackSpec.laneGap * 1.15f * side)
                     val c = at + out
-                    val label = measurer.measure(score.toString(), androidx.compose.ui.text.TextStyle(color = Color.White, fontSize = (2.3f * k / (this.density * this.fontScale)).sp, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold, fontFamily = fonts.label))
+                    val label = flagMeasurer.measure(score.toString(), androidx.compose.ui.text.TextStyle(color = Color.White, fontSize = (2.3f * k / (this.density * this.fontScale)).sp, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold, fontFamily = fonts.label))
                     val w = label.size.width / k + 1.6f
                     val h = label.size.height / k + 0.2f
                     drawRoundRect(Color.Black.copy(alpha = 0.35f), c - Offset(w / 2 - 0.25f, h / 2 - 0.35f), androidx.compose.ui.geometry.Size(w, h), androidx.compose.ui.geometry.CornerRadius(h / 2))
