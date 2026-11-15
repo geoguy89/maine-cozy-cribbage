@@ -127,7 +127,11 @@ fun BoardView(
         val pegTapped by rememberUpdatedState(onPegTap)
         val beckon by rememberInfiniteTransition().animateFloat(0f, 1f, infiniteRepeatable(tween(850), RepeatMode.Reverse))
         // Each player's two pegs, as fractional scores so they can glide; plus how high each is lifted.
-        val pegPos = remember(design) { List(2) { p -> listOf(Animatable(prevScores.getOrElse(p) { -1 }.toFloat()), Animatable(scores.getOrElse(p) { 0 }.toFloat())) } }
+        val pegPos = remember(design) { List(2) { p ->
+            val sc = scores.getOrElse(p) { 0 }
+            val pv = prevScores.getOrElse(p) { -1 }
+            listOf(Animatable((if (pv < sc) pv else sc - 1).toFloat()), Animatable(sc.toFloat()))
+        } }
         val lift = remember(design) { List(2) { List(2) { Animatable(0f) } } }
         // The holes a player has just pegged glow for a moment, and a ring spreads from where the peg lands.
         val gain = remember(design) { List(2) { mutableStateOf(0 to 0) } }
@@ -138,10 +142,18 @@ fun BoardView(
             val prev = prevScores.getOrElse(p) { -1 }
             LaunchedEffect(design, score, prev) {
                 val a = pegPos[p][0]; val b = pegPos[p][1]
+                // A move cut short by the next score leaves a peg in mid-air between holes: set it down first.
+                for (k in 0..1) {
+                    lift[p][k].snapTo(0f)
+                    val v = pegPos[p][k].value
+                    if (v != kotlin.math.floor(v)) pegPos[p][k].snapTo(kotlin.math.ceil(v))
+                }
+                // The two pegs never share a hole: the one behind is always the score before this one.
+                val back = if (prev < score) prev else score - 1
                 val front = if (a.value >= b.value) 0 else 1
                 val frontVal = pegPos[p][front].value
                 when {
-                    score.toFloat() == frontVal -> Unit
+                    score.toFloat() == frontVal -> pegPos[p][1 - front].snapTo(back.toFloat())
                     score > frontVal && animatePegs -> {
                         // The back peg leapfrogs to the new score.
                         val mover = 1 - front
@@ -153,6 +165,7 @@ fun BoardView(
                         up.animateTo(1f, tween(140))
                         pegPos[p][mover].animateTo(score.toFloat(), tween(ms, easing = FastOutSlowInEasing))
                         up.animateTo(0f, tween(160))
+                        pegPos[p][front].snapTo(back.toFloat())
                         onPegLanded()
                         ring[p].snapTo(0f)
                         launch { ring[p].animateTo(1f, tween(700)) }
@@ -160,7 +173,7 @@ fun BoardView(
                     }
                     else -> {
                         // A new game or a jump backwards: set both pegs straight away.
-                        pegPos[p][0].snapTo(prev.toFloat()); pegPos[p][1].snapTo(score.toFloat())
+                        pegPos[p][0].snapTo(back.toFloat()); pegPos[p][1].snapTo(score.toFloat())
                     }
                 }
             }

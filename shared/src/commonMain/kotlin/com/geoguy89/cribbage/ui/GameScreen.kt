@@ -72,13 +72,21 @@ private enum class Sheet { LOG, RULES, MENU, TALK }
 /** Where the walk through a show has got to: which count, and how many of its scores are revealed. */
 private data class ShowStep(val count: Int = 0, val items: Int = 0)
 
-private fun scoresAt(show: Show, step: ShowStep): List<Int> {
+private fun scoresAt(show: Show, step: ShowStep): List<Int> = pegsAt(show, step).first
+
+/** Front pegs (the scores) and back pegs at a point in the show: each score counted leapfrogs the back peg forward. */
+private fun pegsAt(show: Show, step: ShowStep): Pair<List<Int>, List<Int>> {
     val s = show.startScores.toMutableList()
+    // Without a record of the back pegs, put each one hole behind: wrong by a little, but never out of sight.
+    val back = (show.startPrev ?: show.startScores.map { (it - 1).coerceAtLeast(-1) }).toMutableList()
     show.counts.forEachIndexed { i, c ->
         val n = when { i < step.count -> c.score.items.size; i == step.count -> step.items; else -> 0 }
-        s[c.player] = (s[c.player] + c.score.items.take(n).sumOf { it.points }).coerceAtMost(121)
+        for (item in c.score.items.take(n)) if (item.points > 0 && s[c.player] < 121) {
+            back[c.player] = s[c.player]
+            s[c.player] = (s[c.player] + item.points).coerceAtMost(121)
+        }
     }
-    return s
+    return s to back
 }
 
 @Composable
@@ -94,7 +102,11 @@ fun GameScreen(model: AppModel, table: Table, posture: Posture) {
     // Peg it yourself: the player's peg stays where it is until they move it.
     val pegOwed = table.pegOwed
     val boardScores = if (pegOwed != null) display.toMutableList().also { it[table.me] = table.pegAt } else display
-    val boardPrev = if (show != null) show.startScores else state.prevScores
+    val boardPrev = when {
+        show != null -> pegsAt(show, step).second
+        pegOwed != null -> state.prevScores.toMutableList().also { it[table.me] = table.pegBack }
+        else -> state.prevScores
+    }
     val pegTarget = pegOwed?.let { table.me to it }
     val onPegTap: (Boolean) -> Unit = { hit ->
         if (hit) { table.pegMoved(); model.haptic(Haptic.CONFIRM) }

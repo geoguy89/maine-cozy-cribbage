@@ -36,6 +36,8 @@ data class Show(
     /** Scores before the show was counted, so the board can be pegged along with the count. */
     val startScores: List<Int>,
     val counts: List<ShowCount>,
+    /** Where each player's back peg stood before the show (absent in shows dealt by an older server). */
+    val startPrev: List<Int>? = null,
 )
 
 @Serializable
@@ -215,7 +217,7 @@ object Rules {
             for (item in c.score.items) n = award(n, c.player, item)
             if (n.over) break
         }
-        n = n.copy(lastShow = Show(s.hand, s.dealer, starter, startScores, counted))
+        n = n.copy(lastShow = Show(s.hand, s.dealer, starter, startScores, counted, s.prevScores))
         if (n.over) return n
         return deal(n.copy(dealer = s.pone, hand = s.hand + 1), random)
     }

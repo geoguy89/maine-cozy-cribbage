@@ -69,11 +69,15 @@ abstract class Table {
     /** The score the player's front peg stands on. It trails the real score while a peg is waiting to be moved. */
     var pegAt by mutableIntStateOf(-1)
         private set
+    /** Where the player's back peg stands while the front one is waiting to be moved. */
+    var pegBack by mutableIntStateOf(-1)
+        private set
     /** The score the player's peg should be moved to, if it's waiting. */
     val pegOwed: Int? get() = state.scores[me].takeIf { selfPeg && pegAt >= 0 && it > pegAt && pendingShow == null && !state.over }
     fun pegMoved() {
         if (pegAt == state.scores[me]) return
         pegAt = state.scores[me]
+        pegBack = state.prevScores[me]
         afterPeg()
     }
     protected open fun afterPeg() {}
@@ -97,7 +101,7 @@ abstract class Table {
     open fun sendEmote(i: Int) {}
     open fun close() {}
 
-    open fun ackShow() { state.lastShow?.let { shownHand = maxOf(shownHand, it.hand) }; pegAt = state.scores[me] }
+    open fun ackShow() { state.lastShow?.let { shownHand = maxOf(shownHand, it.hand) }; pegAt = state.scores[me]; pegBack = state.prevScores[me] }
 
     fun toggle(card: Card) {
         if (busy || blocked || !myTurn) return
@@ -110,11 +114,12 @@ abstract class Table {
 
     /** Turns new log entries into popups and sounds. The first look at a state just records where it is. */
     protected fun absorb(s: GameState) {
-        if (seenSeq < 0) { seenSeq = s.seq; pegAt = s.scores[me]; return }
+        if (seenSeq < 0) { seenSeq = s.seq; pegAt = s.scores[me]; pegBack = s.prevScores[me]; return }
         val fresh = s.log.filter { it.seq > seenSeq }
         seenSeq = s.seq
         // The show moves the pegs itself; only points made in the play are pegged by hand.
         if (!selfPeg || s.over || (s.lastShow?.hand ?: 0) > shownHand) pegAt = s.scores[me]
+        if (pegAt == s.scores[me]) pegBack = s.prevScores[me]
         for (e in fresh) {
             onEvent(e)
             // Show scores are walked through by the show; only pegging and his heels pop up on the table.

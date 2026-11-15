@@ -188,7 +188,7 @@ object Boards {
             TrackSpec(
                 listOf(Segment(outer, 60), Segment(inner, 60)), laneGap = 3.6f, holeR = 0.66f, connectors = listOf(hop),
                 numbers = Numbers.PILLS, paint = TEAL, groove = false,
-                startHoles = listOf(listOf(startC + Offset(-1.4f, -2.4f), startC + Offset(1.4f, -2.4f)), listOf(startC + Offset(-1.4f, 0.6f), startC + Offset(1.4f, 0.6f))),
+                startHoles = listOf(listOf(startC + Offset(-1.4f, -2.4f), startC + Offset(-1.4f, 0.6f)), listOf(startC + Offset(1.4f, -2.4f), startC + Offset(1.4f, 0.6f))),
                 finish = c + Geo.rotate(Offset(29f, 0f), -24f),
             )
         },
@@ -716,7 +716,7 @@ object Boards {
             TrackSpec(
                 listOf(Segment(outer, 60), Segment(inner, 60)), laneGap = 3.6f, holeR = 0.66f, connectors = listOf(hop),
                 numbers = Numbers.PILLS, paint = TAFFY, groove = false,
-                startHoles = listOf(listOf(startC + Offset(2.4f, -1.4f), startC + Offset(2.4f, 1.4f)), listOf(startC + Offset(-0.6f, -1.4f), startC + Offset(-0.6f, 1.4f))),
+                startHoles = listOf(listOf(startC + Offset(2.4f, -1.4f), startC + Offset(-0.6f, -1.4f)), listOf(startC + Offset(2.4f, 1.4f), startC + Offset(-0.6f, 1.4f))),
                 finish = c + Geo.rotate(Offset(28.6f, 0f), 66f),
             )
         },
